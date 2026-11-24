@@ -1,0 +1,60 @@
+#+TITLE: Org Knowledge Graph Showcase · 知识图谱演示
+#+AUTHOR: Org Native Team
+#+DATE: 2026-11-25
+#+FILETAGS: :graph:showcase:
+#+STARTUP: showall
+
+* Org Knowledge Graph Showcase Hub :graph:architecture:
+:PROPERTIES:
+:ID: graph-showcase-hub
+:CUSTOM_ID: showcase-hub
+:END:
+
+本节点作为知识图谱演示中心，演示多层标题树结构、普通 =[[id:...]]= 引用边、只读 =#+TRANSCLUDE:= 嵌入边与中英文标签检索。
+
+- 核心架构层：[[id:graph-layer-core][Core Graph Layer]]
+- 跨文档背景理念：[[id:welcome-core-idea][核心理念：Org as Source of Truth]]
+- 长程记忆研究笔记：[[id:vla-memory-overview][VLA Memory 论文精读笔记]]
+
+** Core Graph Adapter & Filter Layer :architecture:memory:
+:PROPERTIES:
+:ID: graph-layer-core
+:CUSTOM_ID: layer-core
+:END:
+
+图谱适配器直接复用 =OrgIdIndex= 提供的节点、引用链接与标题层次元数据，不扫描或修改磁盘源文件。
+
+- 下游渲染节点：[[id:graph-layer-leaf][Leaf Canvas Renderer & Quadtree]]
+
+*** Leaf Canvas Renderer & Quadtree Spatial Index :memory:zh中文:
+:PROPERTIES:
+:ID: graph-layer-leaf
+:CUSTOM_ID: layer-leaf
+:END:
+
+底层渲染器基于 =Canvas2D= 与 =d3-quadtree= 空间索引，实现视口裁剪、双边平行曲线分离与高对比度中英文标签。
+
+** Composer & Parallel Edge Demo :graph:zh中文:
+:PROPERTIES:
+:ID: graph-layer-composer
+:CUSTOM_ID: layer-composer
+:END:
+
+本节同时包含指向同一目标节点的多重关系（平行边）：
+
+1. 普通引用链接（实线）：[[id:graph-layer-core][引用 Core Graph Layer]]
+2. 只读内容嵌入（虚线平行边）：
+
+#+TRANSCLUDE: [[id:graph-layer-core]] :only-contents
+
+3. 直接嵌入叶子渲染层说明：
+
+#+TRANSCLUDE: [[id:graph-layer-leaf]] :level 3
+
+* Isolated Orphan Island Node :showcase:
+:PROPERTIES:
+:ID: graph-orphan-island
+:CUSTOM_ID: orphan-island
+:END:
+
+这是一个完全孤立的演示节点，没有任何入链或出链，专门用于验证图谱面板中的「显示孤立节点 / Show orphans」过滤开关。

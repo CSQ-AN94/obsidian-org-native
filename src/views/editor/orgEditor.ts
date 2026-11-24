@@ -166,6 +166,7 @@ export interface OrgEditorOptions {
   linkCallbacks?: LinkCallbacks;
   resolveIdStatus?: (id: string) => OrgIdStatus;
   onDocChanged: () => void;
+  onCursorMoved?: (line: number) => void;
 }
 
 export function livePreviewExtension(options: OrgEditorOptions): Extension {
@@ -213,9 +214,16 @@ export function createOrgEditorState(doc: string, options: OrgEditorOptions): Ed
       keymap.of([...foldKeymap, ...orgKeymap, ...defaultKeymap, ...historyKeymap]),
       options.livePreviewCompartment.of(livePreviewExtension(options)),
       EditorView.updateListener.of((update) => {
-        if (!update.docChanged) return;
-        if (update.transactions.some((tr) => tr.annotation(ExternalDocChange))) return;
-        options.onDocChanged();
+        if (update.docChanged) {
+          if (!update.transactions.some((tr) => tr.annotation(ExternalDocChange))) {
+            options.onDocChanged();
+          }
+          return;
+        }
+        if (update.selectionSet && options.onCursorMoved) {
+          const line = update.state.doc.lineAt(update.state.selection.main.head).number - 1;
+          options.onCursorMoved(Math.max(0, line));
+        }
       }),
     ],
   });

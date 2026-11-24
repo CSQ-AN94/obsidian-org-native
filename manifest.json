@@ -1,9 +1,9 @@
 {
   "id": "org-native",
   "name": "Org Native",
-  "version": "0.2.0-beta.1",
+  "version": "0.3.0-beta.1",
   "minAppVersion": "1.5.0",
-  "description": "Native Org-mode reading view, live preview, source editing, heading folding, and Org ID navigation for Obsidian.",
+  "description": "Native Org-mode reading view, live preview, source editing, heading folding, Org ID navigation, read-only transclusion, and Org Knowledge Graph for Obsidian.",
   "author": "Siqi Cai",
   "authorUrl": "https://github.com/CSQ-AN94",
   "isDesktopOnly": false

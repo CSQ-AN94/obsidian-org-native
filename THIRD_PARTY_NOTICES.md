@@ -106,3 +106,28 @@ SOFTWARE.
 ## 5. Obsidian APIs and CodeMirror
 
 The production build resolves [Obsidian](https://github.com/obsidianmd/obsidian-api) and [CodeMirror 6](https://codemirror.net/) from the Obsidian host. Their packages are external to the plugin bundle. The [npm lockfile](package-lock.json) records the development and test dependencies.
+
+
+## 6. Graph Simulation Dependencies (`d3-force`, `d3-quadtree`)
+
+- [d3-force](https://github.com/d3/d3-force) & [d3-quadtree](https://github.com/d3/d3-quadtree) (`d3-force@^3.0.1`)
+- **License**: ISC License
+- **Use**: Force-directed physics simulation (`forceLink`, `forceManyBody` Barnes-Hut approximation, `forceCenter`, radial positioning) and `O(log N)` quadtree pointer hit-testing inside the built-in Org Knowledge Graph views.
+
+```text
+ISC License
+
+Copyright 2010-2026 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```

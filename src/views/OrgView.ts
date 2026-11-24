@@ -3,6 +3,7 @@ import { Compartment, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type OrgNativePlugin from "../main";
 import { VIEW_TYPE_ORG } from "../constants";
+import type { OrgReaderFocusReason } from "../core/graph/types";
 import type { VaultIndexChangeEvent } from "../core/index/vaultIndexService";
 import type { FoldLevelMode, OrgViewMode } from "../core/model/types";
 import { FileSyncGuard } from "../core/safety/fileSyncGuard";
@@ -29,6 +30,7 @@ import {
 } from "./reading/folding";
 import { renderOrgPreview } from "./reading/render";
 import { hydrateTransclusionsInDom, TransclusionRefreshController } from "./transclusion";
+import { ICON_ORG_LOCAL_GRAPH } from "./icons";
 
 export class OrgView extends TextFileView {
   editor: EditorView | null = null;
@@ -39,10 +41,14 @@ export class OrgView extends TextFileView {
   private previewHost: HTMLElement | null = null;
   private modeAction: HTMLElement | null = null;
   private sourceAction: HTMLElement | null = null;
+  private graphAction: HTMLElement | null = null;
   private livePreviewCompartment = new Compartment();
   private suppressChange = false;
   private pendingPreviewScrollRatio: number | null = null;
   private outlineTimer: number | null = null;
+  private cursorFocusTimer: number | null = null;
+  private jumpHighlightTimer: number | null = null;
+  private lastEmittedCursorLine = -1;
   private savedReadingFolds: ReadingFoldSnapshot | null = null;
   private unsubscribeIndex: (() => void) | null = null;
   private vaultEventRefs: EventRef[] = [];
@@ -119,12 +125,32 @@ export class OrgView extends TextFileView {
         () => this.toggleMode()
       );
     }
+    if (!this.graphAction) {
+      this.graphAction = this.addAction(
+        ICON_ORG_LOCAL_GRAPH,
+        this.plugin.t("action.openLocalGraph"),
+        () => {
+          void this.openLocalGraphAtCursor();
+        }
+      );
+    }
     this.updateModeAction();
     if (!this.domListenersBound) {
       this.domListenersBound = true;
       this.registerDomEvent(this.contentEl, "click", (event) => {
         if (this.mode !== "reading" && this.editor && event.target === this.editorHost) {
           this.editor.focus();
+          return;
+        }
+        if (this.mode === "reading" && event.target instanceof Element) {
+          if (event.target.closest(".org-fold-btn, .org-fold-ellipsis, .org-link-id")) return;
+          const sectionEl = event.target.closest<HTMLElement>(".org-section[data-line]");
+          if (sectionEl) {
+            const line = Number(sectionEl.dataset.line);
+            if (Number.isFinite(line)) {
+              this.emitReaderFocus(line, "click");
+            }
+          }
         }
       });
     }
@@ -169,6 +195,14 @@ export class OrgView extends TextFileView {
     if (this.outlineTimer != null) {
       window.clearTimeout(this.outlineTimer);
       this.outlineTimer = null;
+    }
+    if (this.cursorFocusTimer != null) {
+      window.clearTimeout(this.cursorFocusTimer);
+      this.cursorFocusTimer = null;
+    }
+    if (this.jumpHighlightTimer != null) {
+      window.clearTimeout(this.jumpHighlightTimer);
+      this.jumpHighlightTimer = null;
     }
     this.disposeHoverPreview?.();
     this.disposeHoverPreview = null;
@@ -229,6 +263,7 @@ export class OrgView extends TextFileView {
       linkCallbacks: this.buildLinkCallbacks(),
       resolveIdStatus: this.resolveIdStatus,
       onDocChanged: () => this.handleDocChanged(),
+      onCursorMoved: (line) => this.handleEditorCursorMoved(line),
     });
     this.editor = new EditorView({ state, parent: this.editorHost });
     this.applyMode(false);
@@ -417,12 +452,14 @@ export class OrgView extends TextFileView {
         this.lineEnding = result.content.includes("\r\n") ? "\r\n" : "\n";
         this.data = result.content;
         this.savedReadingFolds = null;
+        this.lastEmittedCursorLine = -1;
         this.transclusionRefresh.reset();
         this.mode = this.plugin.settings.defaultMode;
         this.hideConflictBanner();
         this.replaceEditorFull(result.content.replace(/\r\n/g, "\n"));
         this.updateOutline(true);
         this.applyMode(false);
+        this.emitFileOpenFocusIfActive();
         break;
       case "reload-external":
         this.lineEnding = result.content.includes("\r\n") ? "\r\n" : "\n";
@@ -512,6 +549,7 @@ export class OrgView extends TextFileView {
             linkCallbacks: this.buildLinkCallbacks(),
             resolveIdStatus: this.resolveIdStatus,
             onDocChanged: () => this.handleDocChanged(),
+            onCursorMoved: (line) => this.handleEditorCursorMoved(line),
           })
         ),
       });
@@ -545,6 +583,11 @@ export class OrgView extends TextFileView {
 
   refreshLocale(): void {
     this.updateModeAction();
+    if (this.graphAction) {
+      const label = this.plugin.t("action.openLocalGraph");
+      this.graphAction.setAttribute("aria-label", label);
+      this.graphAction.setAttribute("title", label);
+    }
     if (this.syncGuard.isConflicted()) {
       this.showConflictBanner();
     }
@@ -637,6 +680,7 @@ export class OrgView extends TextFileView {
             linkCallbacks: this.buildLinkCallbacks(),
             resolveIdStatus: this.resolveIdStatus,
             onDocChanged: () => this.handleDocChanged(),
+            onCursorMoved: (line) => this.handleEditorCursorMoved(line),
           })
         ),
         refreshOrgPreview.of(null),
@@ -677,12 +721,18 @@ export class OrgView extends TextFileView {
     this.editor?.focus();
   }
 
-  jumpToLine(line: number): void {
+  jumpToLine(line: number, options?: { highlight?: boolean }): void {
+    const shouldHighlight = options?.highlight ?? true;
+    this.emitReaderFocus(line, "jump");
+
     if (this.mode === "reading") {
       const preview = this.previewHost?.querySelector<HTMLElement>(".org-preview");
       if (preview) {
         const target = revealReadingLine(preview, line);
         target?.scrollIntoView?.({ block: "start" });
+        if (shouldHighlight && target) {
+          this.applyJumpHighlight(target);
+        }
       }
       return;
     }
@@ -694,6 +744,88 @@ export class OrgView extends TextFileView {
     const block = this.editor.lineBlockAt(from);
     this.editor.scrollDOM.scrollTop = Math.max(0, block.top - 60);
     this.editor.focus();
+  }
+
+  private emitFileOpenFocusIfActive(): void {
+    const activeLeaf = (this.app.workspace as { activeLeaf?: WorkspaceLeaf | null }).activeLeaf;
+    if (activeLeaf && activeLeaf !== this.leaf) return;
+    this.emitReaderFocus(0, "file-open");
+  }
+
+  private handleEditorCursorMoved(line: number): void {
+    if (this.mode === "reading" || line === this.lastEmittedCursorLine) return;
+    this.lastEmittedCursorLine = line;
+    if (this.cursorFocusTimer != null) {
+      window.clearTimeout(this.cursorFocusTimer);
+    }
+    this.cursorFocusTimer = window.setTimeout(() => {
+      this.cursorFocusTimer = null;
+      this.emitReaderFocus(line, "cursor");
+    }, 180);
+  }
+
+  private emitReaderFocus(line: number, reason: OrgReaderFocusReason): void {
+    if (!this.file || !this.plugin.vaultIndex || !this.plugin.graph) return;
+    const event = this.plugin.graph.focusBus.resolveFocusForFileLine(
+      this.plugin.vaultIndex.index,
+      this.file.path,
+      line,
+      reason
+    );
+    this.plugin.graph.focusBus.emit(event);
+  }
+
+  private async openLocalGraphAtCursor(): Promise<void> {
+    if (!this.file || !this.plugin.vaultIndex || !this.plugin.graph) {
+      await this.plugin.graph?.openLocalGraph();
+      return;
+    }
+    const existingFocus = this.plugin.graph.focusBus.getCurrent();
+    if (
+      this.mode === "reading" &&
+      existingFocus &&
+      existingFocus.filePath === this.file.path &&
+      existingFocus.nodeKey
+    ) {
+      await this.plugin.graph.openLocalGraph({
+        focusNodeKey: existingFocus.nodeKey,
+        filePath: existingFocus.filePath,
+      });
+      return;
+    }
+    const line = this.mode === "reading" ? 0 : this.getEphemeralState().line;
+    const event = this.plugin.graph.focusBus.resolveFocusForFileLine(
+      this.plugin.vaultIndex.index,
+      this.file.path,
+      line,
+      "manual"
+    );
+    this.plugin.graph.focusBus.emit(event);
+    await this.plugin.graph.openLocalGraph(
+      event.nodeKey
+        ? { focusNodeKey: event.nodeKey, filePath: event.filePath }
+        : { filePath: this.file.path }
+    );
+  }
+
+  private applyJumpHighlight(sectionEl: HTMLElement): void {
+    if (this.jumpHighlightTimer != null) {
+      window.clearTimeout(this.jumpHighlightTimer);
+      this.jumpHighlightTimer = null;
+    }
+    const prev = this.previewHost?.querySelectorAll(".org-heading-jump-highlight");
+    prev?.forEach((node) => node.classList.remove("org-heading-jump-highlight"));
+
+    const headingEl =
+      Array.from(sectionEl.children).find((el): el is HTMLElement =>
+        el.classList.contains("org-heading-preview")
+      ) ?? sectionEl;
+    headingEl.classList.add("org-heading-jump-highlight");
+
+    this.jumpHighlightTimer = window.setTimeout(() => {
+      headingEl.classList.remove("org-heading-jump-highlight");
+      this.jumpHighlightTimer = null;
+    }, 1600);
   }
 
   private jumpToCustomId(customId: string): void {

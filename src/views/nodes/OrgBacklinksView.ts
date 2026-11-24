@@ -13,6 +13,7 @@ import type {
 import { translate, type TranslationKey, type UiLanguage } from "../../i18n";
 import type OrgNativePlugin from "../../main";
 import { nodeLabel, type NodeLabelKey } from "./nodeLabels";
+import { ICON_ORG_BACKLINKS } from "../icons";
 
 export type OrgBacklinksHost = Pick<OrgNativePlugin, "t"> & {
   vaultIndex?: OrgNativePlugin["vaultIndex"];
@@ -107,7 +108,7 @@ export class OrgBacklinksView extends ItemView {
   }
 
   getIcon(): string {
-    return "links-going-in";
+    return ICON_ORG_BACKLINKS;
   }
 
   getTargetFile(): string | null {

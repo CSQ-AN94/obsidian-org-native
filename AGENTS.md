@@ -1,78 +1,72 @@
 # Multi-Agent Collaboration & Code Ownership Rules
 
-This file governs parallel Sprint 02 development in the repository.
+This file governs parallel development across Sprint 02–04 worktrees in the repository.
 
-## 1. Git Worktree Topology
+## 1. Sprint 04 Git Worktree Topology
 
 | Agent Role | Branch | Worktree Directory |
 |---|---|---|
 | Lead / Integration Agent | `main` | Repository root |
-| Agent A — Reading UX | `feat/reading-ux` | `.worktrees/reading-ux` |
-| Agent B — Node Navigation | `feat/node-navigation` | `.worktrees/node-navigation` |
-| Agent C — Transclusion | `feat/transclusion` | `.worktrees/transclusion` |
-| QA Agent — GUI & Data Safety | `test/gui-regression` | `.worktrees/gui-regression` |
+| Agent A — Graph Data & Adapter | `feat/graph-data` | `.worktrees/sprint04-graph-data` |
+| Agent B — Graph UI & Canvas Renderer | `feat/graph-ui` | `.worktrees/sprint04-graph-ui` |
+| Agent C — Local Graph & Reader Sync | `feat/graph-local-sync` | `.worktrees/sprint04-graph-local` |
+| QA Agent — Graph QA, Perf & GUI | `test/graph-qa` | `.worktrees/sprint04-graph-qa` |
 
 ---
 
-## 2. Strict File & Directory Ownership
+## 2. Strict File & Directory Ownership (Sprint 04)
 
 ### Lead Agent (Exclusive Integration Ownership)
 - `src/main.ts`
 - `src/views/OrgView.ts`
 - `src/core/model/types.ts`
-- `src/core/parser/` public signatures
-- `src/settings.ts`
-- `src/i18n.ts`
-- `src/constants.ts`
-- `tests/mocks/obsidian.ts`
-- `package.json`, `manifest.json`
-- Shared docs (`SPRINT_02.md`, `AGENTS.md`, `docs/INTERFACES.md`, `SPRINT_02_REPORT.md`, `README.md`, `ROADMAP.md`)
+- `src/core/index/orgIdIndex.ts`
+- `src/core/index/vaultIndexService.ts`
+- `src/core/graph/types.ts`
+- `src/views/graph/readerFocusBus.ts`
+- `src/views/graph/index.ts`
+- `src/views/graph/OrgLocalGraphView.ts` (final Lead assembly wiring B + C + A)
+- `src/settings.ts`, `src/i18n.ts`, `src/constants.ts`, root `styles.css`
+- `tests/mocks/obsidian.ts`, `package.json`, `manifest.json`
+- Shared docs (`SPRINT_04.md`, `AGENTS.md`, `docs/INTERFACES.md`, `docs/GRAPH_ENGINE_EVALUATION.md`, `THIRD_PARTY_NOTICES.md`, `SPRINT_04_REPORT.md`, `README.md`, `ROADMAP.md`)
 
-### Agent A — Reading UX (`feat/reading-ux`)
+### Agent A — Graph Data & Adapter (`feat/graph-data`)
 - Owns:
-  - `src/views/reading/*`
-  - `src/views/editor/*`
-  - `styles.css`
-  - `tests/readingUx.test.ts`
-- Must NOT edit `src/main.ts`, `src/views/OrgView.ts`, `src/core/*`, `src/views/nodes/*`, `src/views/transclusion/*`, `package.json`, `manifest.json`.
+  - `src/core/graph/graphFilter.ts`
+  - `src/core/graph/graphAdapter.ts`
+  - `src/core/graph/localGraph.ts`
+  - `src/core/graph/index.ts`
+  - `tests/graphAdapter.test.ts`
+- Must NOT edit `src/core/graph/types.ts`, `src/core/index/*`, `src/views/*`, `src/main.ts`, `package.json`.
 
-### Agent B — Node Navigation (`feat/node-navigation`)
+### Agent B — Graph UI, Simulation & Canvas (`feat/graph-ui`)
 - Owns:
-  - `src/core/index/*`
-  - `src/views/nodes/*`
-  - `src/views/nodes/nodes.css` (merged into `styles.css` by Lead in Phase 3)
-  - `tests/nodeNavigation.test.ts`
-- Must NOT edit `src/main.ts`, `src/views/OrgView.ts`, root `styles.css`, `src/views/reading/*`, `src/views/editor/*`, `src/core/transclusion/*`, `package.json`, `manifest.json`.
+  - `src/views/graph/simulation.ts`
+  - `src/views/graph/canvasRenderer.ts`
+  - `src/views/graph/graphControls.ts`
+  - `src/views/graph/OrgGraphBaseView.ts`
+  - `src/views/graph/OrgGlobalGraphView.ts`
+  - `src/views/graph/graph.css` (merged into `styles.css` by Lead in Phase 2)
+  - `tests/graphRenderer.test.ts`
+- Must NOT edit `src/views/graph/readerFocusBus.ts`, `src/views/graph/localGraphController.ts`, `src/views/OrgView.ts`, `src/main.ts`, root `styles.css`, `src/core/*`.
 
-### Agent C — Transclusion (`feat/transclusion`)
+### Agent C — Local Graph & Reader Sync (`feat/graph-local-sync`)
 - Owns:
-  - `src/core/transclusion/*`
-  - `src/views/transclusion/*`
-  - `src/views/transclusion/transclusion.css` (merged into `styles.css` by Lead in Phase 3)
-  - `tests/transclusion.test.ts`
-- Must NOT edit `src/main.ts`, `src/views/OrgView.ts`, root `styles.css`, `src/views/reading/*`, `src/core/index/*`, `package.json`, `manifest.json`.
-- Zero GPLv3 source code copying from `nobiot/org-transclusion`.
+  - `src/views/graph/localGraphController.ts`
+  - `tests/graphLocalSync.test.ts`
+- Must NOT edit `src/views/graph/readerFocusBus.ts`, `src/views/graph/OrgGraphBaseView.ts`, `src/views/OrgView.ts`, `src/main.ts`, `src/core/*`.
 
-### QA Agent (`test/gui-regression`)
-- Owns:
-  - `tests/qa/*`
-  - `scripts/qa-cdp-smoke.mjs`
-- Must NOT edit `src/*`, `styles.css`, `package.json`, `manifest.json`, or `test-vault/` sample `.org` files (Lead updates `test-vault/` during final integration so parallel `orgIdIndex.test.ts` corpus assertions remain green across all worktrees).
+### QA Agent (`test/graph-qa`)
+- Owns (branched AFTER Phase 2 integration on `main`):
+  - `test-vault/07-graph-showcase.org` (plus updating `tests/orgIdIndex.test.ts` expected file count only when adding `07`)
+  - `scripts/bench-graph.mjs`
+  - `scripts/qa-cdp-sprint04.mjs`
+  - `tests/qa/sprint04-graph-qa.test.ts`
 
 ---
 
-## 3. CSS Conflict-Prevention Convention
-Obsidian bundles a single `styles.css` at plugin root. To guarantee **zero merge conflicts** during parallel execution:
-- Agent A edits `styles.css` directly for Reading View and Live Preview UX.
-- Agent B writes node-navigation styles in `src/views/nodes/nodes.css`.
-- Agent C writes transclusion styles in `src/views/transclusion/transclusion.css`.
-- During Phase 3 integration, the Lead Agent appends `nodes.css` and `transclusion.css` cleanly into root `styles.css`.
-
----
-
-## 4. Interface Change & Merge Rules
-1. Workers develop against frozen types defined on `main` (`docs/INTERFACES.md`, `src/core/model/types.ts`, `src/core/transclusion/types.ts`, `src/settings.ts`, `src/i18n.ts`).
-2. If a Worker discovers a missing shared interface or mock, report it back to Lead instead of modifying Lead-owned files directly.
-3. Every Worker MUST run `npm run check && npm test` inside its own worktree before committing.
-4. Every Worker creates focused Git commit(s) on its assigned branch (`feat/...` or `test/...`). Never use `git reset --hard` or force-overwrite work.
-5. Lead inspects every branch diff (`git diff main..<branch>`) before merging into `main` via `git merge --no-ff`.
+## 3. Rules
+1. Workers develop against frozen contracts in `src/core/graph/types.ts`, `src/views/graph/readerFocusBus.ts`, and `docs/INTERFACES.md`.
+2. Zero cross-worktree edits. Each subagent operates strictly in its own worktree directory.
+3. Every Worker MUST verify `npm run check && npx vitest run <its test>` before committing on its feature branch.
+4. Lead inspects branch diffs (`git diff main..<branch>`) and merges cleanly via `git merge --no-ff`.

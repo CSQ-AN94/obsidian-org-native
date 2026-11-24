@@ -1,4 +1,5 @@
 import type { LanguageSetting } from "./i18n";
+import type { OrgGraphViewState } from "./core/graph/types";
 import type {
   OrgViewMode,
   PropertiesDisplayMode,
@@ -35,6 +36,10 @@ export interface OrgNativeSettings {
   enableTransclusion: boolean;
   /** Maximum nested #+transclude: recursion depth (1 to 8). */
   transclusionMaxDepth: number;
+  /** Persisted UI state for Global Org Knowledge Graph view. */
+  graphGlobalState?: Partial<OrgGraphViewState>;
+  /** Persisted UI state for Local Org Knowledge Graph view. */
+  graphLocalState?: Partial<OrgGraphViewState>;
 }
 
 export const DEFAULT_SETTINGS: OrgNativeSettings = {

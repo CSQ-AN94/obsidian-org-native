@@ -30,6 +30,8 @@ import {
 import { OrgOutlineBridge } from "./integration/outline";
 import { DEFAULT_SETTINGS, OrgNativeSettings } from "./settings";
 import { setPrismInstance, type PrismLike } from "./views/editor/highlight";
+import { registerOrgGraph, type OrgGraphHandle } from "./views/graph";
+import { registerOrgNativeIcons } from "./views/icons";
 import { registerNodeNavigation, type NodeNavigationHandle } from "./views/nodes";
 import { OrgView } from "./views/OrgView";
 
@@ -38,6 +40,7 @@ export default class OrgNativePlugin extends Plugin {
   outline!: OrgOutlineBridge;
   vaultIndex!: VaultIndexService;
   nodeNavigation!: NodeNavigationHandle;
+  graph!: OrgGraphHandle;
   transclusionEngine!: OrgTransclusionEngine;
 
   get uiLanguage(): UiLanguage {
@@ -51,6 +54,7 @@ export default class OrgNativePlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     configureTodoKeywordExtras(this.settings.todoKeywords);
+    registerOrgNativeIcons();
 
     this.outline = new OrgOutlineBridge(this.app, this);
     this.outline.setEnabled(this.settings.enableOutlineBridge);
@@ -64,6 +68,10 @@ export default class OrgNativePlugin extends Plugin {
 
     this.transclusionEngine = this.createTransclusionEngine();
     this.nodeNavigation = registerNodeNavigation({
+      plugin: this,
+      vaultIndex: this.vaultIndex,
+    });
+    this.graph = registerOrgGraph({
       plugin: this,
       vaultIndex: this.vaultIndex,
     });
@@ -173,6 +181,7 @@ export default class OrgNativePlugin extends Plugin {
   }
 
   onunload(): void {
+    this.graph?.dispose();
     this.nodeNavigation?.dispose();
     this.vaultIndex?.dispose();
     this.outline?.destroy();
@@ -234,6 +243,7 @@ export default class OrgNativePlugin extends Plugin {
       [`${PLUGIN_ID}:show-diagnostics`]: this.t("command.showDiagnostics"),
       [`${PLUGIN_ID}:rebuild-index`]: this.t("command.rebuildIndex"),
       ...(this.nodeNavigation?.getCommandNames() ?? {}),
+      ...(this.graph?.getCommandNames() ?? {}),
     };
     for (const [id, name] of Object.entries(names)) {
       const command = commands[id];

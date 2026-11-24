@@ -27,6 +27,7 @@ export interface OrgLinkSourceMeta {
 
 export interface OrgFileIndexData {
   filePath: string;
+  fileTitle?: string;
   nodes: OrgNodeEntry[];
   links: OrgIdLink[];
   linkMeta?: OrgLinkSourceMeta[];
@@ -165,6 +166,17 @@ function compareLinks(a: OrgIdLink, b: OrgIdLink): number {
   );
 }
 
+function parseFileTagsLine(raw: string): string[] {
+  const tags: string[] = [];
+  for (const part of raw.trim().split(/[\s:]+/)) {
+    const cleaned = part.trim();
+    if (cleaned && !tags.includes(cleaned)) {
+      tags.push(cleaned);
+    }
+  }
+  return tags;
+}
+
 /**
  * Parse a single `.org` document into indexed `:ID:` / `:CUSTOM_ID:` nodes
  * and `[[id:...]]` links, ignoring code/example/comment/math blocks.
@@ -179,6 +191,17 @@ export function extractOrgFileIndexData(filePath: string, source: string): OrgFi
   const invalidLinkMeta: OrgLinkSourceMeta[] = [];
   const lineMeta = new Map<number, { sourceHeadingPath: string[]; sourceNode?: OrgNodeEntry }>();
 
+  const fileTags: string[] = [];
+  for (const idx of tree.preambleLines) {
+    const line = doc.lines[idx];
+    if (!line || line.kind !== "keyword") continue;
+    const m = /^\s*#\+FILETAGS:\s*(.*)$/i.exec(line.text);
+    if (!m) continue;
+    for (const tag of parseFileTagsLine(m[1])) {
+      if (!fileTags.includes(tag)) fileTags.push(tag);
+    }
+  }
+
   let fileNode: OrgNodeEntry | undefined;
   if ((tree.fileId || tree.fileCustomId) && tree.fileDrawerStartLine != null) {
     fileNode = {
@@ -192,6 +215,7 @@ export function extractOrgFileIndexData(filePath: string, source: string): OrgFi
       headingPath: [],
       drawerStartLine: tree.fileDrawerStartLine,
       drawerEndLine: tree.fileDrawerEndLine ?? tree.fileDrawerStartLine,
+      tags: fileTags.length > 0 ? fileTags : undefined,
     };
     nodes.push(fileNode);
   }
@@ -210,6 +234,9 @@ export function extractOrgFileIndexData(filePath: string, source: string): OrgFi
     let currentNode = parentNode;
 
     if ((sec.id || sec.customId) && sec.drawerStartLine != null) {
+      const heading = doc.lines[sec.headingLineIndex]?.heading;
+      const headingTags = heading?.tags.map((t) => t.name) ?? [];
+      const todo = heading?.keyword?.text;
       currentNode = {
         id: sec.id,
         customId: sec.customId,
@@ -221,6 +248,9 @@ export function extractOrgFileIndexData(filePath: string, source: string): OrgFi
         headingPath,
         drawerStartLine: sec.drawerStartLine,
         drawerEndLine: sec.drawerEndLine ?? sec.drawerStartLine,
+        tags: headingTags.length > 0 ? headingTags : undefined,
+        todo,
+        parentNodeId: parentNode?.id,
       };
       nodes.push(currentNode);
     }
@@ -303,6 +333,7 @@ export function extractOrgFileIndexData(filePath: string, source: string): OrgFi
 
   return {
     filePath,
+    fileTitle: doc.title,
     nodes,
     links,
     linkMeta,
@@ -691,6 +722,37 @@ export class OrgIdIndex {
     const data = this.files.get(filePath);
     if (!data) return [];
     return [...data.nodes].sort((a, b) => a.line - b.line);
+  }
+
+  getFileIndexData(filePath: string): OrgFileIndexData | undefined {
+    return this.files.get(filePath);
+  }
+
+  getAllFileIndexData(): OrgFileIndexData[] {
+    return Array.from(this.files.values()).sort((a, b) =>
+      a.filePath.localeCompare(b.filePath)
+    );
+  }
+
+  findEnclosingNodeAtLine(filePath: string, line: number): OrgNodeEntry | undefined {
+    const data = this.files.get(filePath);
+    if (!data || data.nodes.length === 0) return undefined;
+
+    const matchingIdNodes = data.nodes
+      .filter((n) => Boolean(n.id) && n.line <= line && line <= n.endLine)
+      .sort((a, b) => b.level - a.level || b.line - a.line);
+    if (matchingIdNodes.length > 0) return matchingIdNodes[0];
+
+    const matchingCustomNodes = data.nodes
+      .filter((n) => Boolean(n.customId) && n.line <= line && line <= n.endLine)
+      .sort((a, b) => b.level - a.level || b.line - a.line);
+    if (matchingCustomNodes.length > 0) return matchingCustomNodes[0];
+
+    if (line === 0) {
+      const sorted = this.getNodesInFile(filePath);
+      return sorted.find((n) => Boolean(n.id)) ?? sorted[0];
+    }
+    return undefined;
   }
 
   getFileOutgoingTargetIds(filePath: string): Set<string> {

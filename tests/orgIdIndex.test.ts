@@ -194,7 +194,7 @@ describe("OrgIdIndex & cross-file node navigation", () => {
       .readdirSync(vaultDir)
       .filter((f) => f.endsWith(".org"))
       .sort();
-    expect(orgFiles).toHaveLength(6);
+    expect(orgFiles).toHaveLength(7);
 
     const index = new OrgIdIndex();
     for (const file of orgFiles) {
@@ -205,7 +205,7 @@ describe("OrgIdIndex & cross-file node navigation", () => {
     expect(index.resolveId("fake-id-must-not-be-indexed").status).toBe("missing");
     expect(index.resolveId("fake-transclude-target-id").status).toBe("missing");
 
-    // Cross-file nodes in 01..06 must resolve cleanly
+    // Cross-file nodes in 01..07 must resolve cleanly
     for (const id of [
       "org-native-welcome-root",
       "welcome-core-idea",
@@ -216,12 +216,17 @@ describe("OrgIdIndex & cross-file node navigation", () => {
       "transclusion-nested-parent",
       "transclusion-cycle-a",
       "transclusion-cycle-b",
+      "graph-showcase-hub",
+      "graph-layer-core",
+      "graph-layer-leaf",
+      "graph-layer-composer",
+      "graph-orphan-island",
     ]) {
       expect(index.resolveId(id).status).toBe("found");
     }
 
     const diag = index.getDiagnostics();
-    expect(diag.fileCount).toBe(6);
+    expect(diag.fileCount).toBe(7);
     expect(diag.duplicates.map((d) => d.id)).toEqual(["demo-duplicate-id"]);
     expect(diag.brokenLinks.map((b) => b.link.targetId)).toEqual([
       "missing-demo-404",

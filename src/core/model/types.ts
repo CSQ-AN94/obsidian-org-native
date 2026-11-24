@@ -240,6 +240,12 @@ export interface OrgNodeEntry {
   headingPath: string[];
   drawerStartLine: number;
   drawerEndLine: number;
+  /** Org tags on the headline (or #+FILETAGS: on file-level node). */
+  tags?: string[];
+  /** Headline TODO state keyword when present. */
+  todo?: string;
+  /** Nearest ancestor heading's :ID: in the same file, if present. */
+  parentNodeId?: string;
 }
 
 export interface OrgIdLink {

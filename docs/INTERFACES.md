@@ -107,3 +107,34 @@ Defined cleanly in `src/core/transclusion/types.ts` (zero GPLv3 code):
   - Guards: cycle detection via `canonicalKey`, max nesting depth (`depth >= maxDepth`), expansion budget cap, path traversal & unsafe URI blocking, zero mutation of source files.
 - `hydrateTransclusionsInDom(root: HTMLElement, options: TransclusionDomRenderOptions): Promise<void>`:
   - Replaces `.org-transclude-slot` elements with read-only `<aside class="org-transclusion">`, clickable source link, unsupported parameter warnings, error callouts, and recursive nested hydration.
+
+
+---
+
+## 5. Sprint 04 Knowledge Graph Contracts (Frozen by Lead)
+
+### 5.1 View IDs & Settings
+- `VIEW_TYPE_ORG_GRAPH = "org-native-graph"`
+- `VIEW_TYPE_ORG_LOCAL_GRAPH = "org-native-local-graph"`
+- `OrgNativeSettings.graphGlobalState?: Partial<OrgGraphViewState>`
+- `OrgNativeSettings.graphLocalState?: Partial<OrgGraphViewState>`
+
+### 5.2 Extended `OrgNodeEntry` & `OrgIdIndex` Accessors
+- `OrgNodeEntry` carries optional `tags?: string[]`, `todo?: string`, `parentNodeId?: string`.
+- `OrgFileIndexData` carries `fileTitle?: string`.
+- `OrgIdIndex` exposes `getFileIndexData(filePath)`, `getAllFileIndexData()`, and `findEnclosingNodeAtLine(filePath, line)`.
+- `VaultIndexService.openNode(node, preferredMode, { preserveLeaf, highlight })` never replaces Graph or Backlinks leaves when jumping from Graph to Reader.
+
+### 5.3 Canonical Graph Keys & Relations (`src/core/graph/types.ts`)
+- Node IDs:
+  - `id:<orgId>` (`canonicalOrgNodeKey`) for primary Org `:ID:` headings/files
+  - `dup:<orgId>@<filePath>:<line>` (`canonicalDuplicateNodeKey`) for duplicate definitions
+  - `file:<filePath>` (`canonicalFileNodeKey`) for File Graph nodes & fallback anchors
+  - `missing:<targetId>` (`canonicalUnresolvedNodeKey`) for unresolved target ghosts
+- Three non-confused edge kinds (`OrgGraphEdgeKind`):
+  - `"reference"`: `[[id:...]]` citations
+  - `"transclusion"`: `#+TRANSCLUDE: [[id:...]]` content embeds
+  - `"structural"`: file -> heading and parent `:ID:` -> child `:ID:` containment edges (hidden by default)
+
+### 5.4 Reader <-> Local Graph Focus Bus (`src/views/graph/readerFocusBus.ts`)
+- `OrgReaderFocusBus` emits `OrgReaderFocusEvent` (`file-open` | `click` | `cursor` | `jump` | `manual`) whenever resolved `(filePath, nodeKey, orgId)` changes (skipping redundant `cursor` / `file-open` events on scroll).

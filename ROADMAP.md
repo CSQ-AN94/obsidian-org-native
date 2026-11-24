@@ -31,9 +31,18 @@
 
 ---
 
-## Phase 4: Sprint 04 Ecosystem & UX Candidates (Future)
+## Sprint 04 Beta (Delivered — `v0.3.0-beta.1`)
 
-- [ ] **Built-in Org Node Graph View (P0 Priority)**: Dedicated canvas/SVG/force-directed Graph View powered by `OrgIdIndex` (since Obsidian's built-in core Graph View only graphs `.md` files and does not treat `.org` notes as first-class graph nodes), supporting local neighborhood + global node graphs, `link` vs `transclude` edge filtering, `:ROAM_REFS:` tags, and node click-to-open.
+- [x] **Built-in Org Knowledge Graph (`d3-force` + `d3-quadtree` + HiDPI Canvas2D)**: Pure MIT/ISC engine ([docs/GRAPH_ENGINE_EVALUATION.md](docs/GRAPH_ENGINE_EVALUATION.md)) built strictly on official Obsidian `ItemView`/`Workspace` APIs, reusing `OrgIdIndex` as the single source of truth with zero writes to `.org` files.
+- [x] **Global Org Graph (`feat/graph-data`, `feat/graph-ui`)**: Heading-level (`id:<orgId>`) Node Graph and `.org` File Graph granularities; distinct `reference` (solid arrow), `transclusion` (dashed curve), and `structural` (dotted, hidden by default) edges with parallel-edge separation; search queries (`tag:`, `file:`, `path:`, `todo:`, `id:`, text), tag/folder/property filters, orphan & unresolved toggles, duplicate `:ID:` rings, color groups, physics/display sliders, Dark & Light themes, and persisted state.
+- [x] **Local Graph & Reader Bidirectional Sync (`feat/graph-local-sync`)**: Depth `1/2/3` hops, incoming/outgoing toggles, auto-follow on Reader heading click, cursor move, and file switch with scroll-jitter suppression, Lock focus toggle, HTML-escaped Hover Popover + Inspector card, and Graph → Reader jump preserving Graph panes with `.org-heading-jump-highlight`.
+- [x] **Real Obsidian Electron GUI Validation (`PASS 12/12`)**: Verified `G1`–`G12` end-to-end against isolated `test-vault/` via live Electron CDP (`scripts/qa-cdp-sprint04.mjs`) with `0` page/console errors and `7` visually verified screenshots ([SPRINT_04_REPORT.md](SPRINT_04_REPORT.md)).
+- [x] **Graph Scale Optimization & Benchmarks**: Benchmarked incremental diffing, warm-start stabilization, and `d3-quadtree` hit-testing at `100`, `1,000`, and `5,000` synthetic Org nodes ([scripts/bench-graph.mjs](scripts/bench-graph.mjs), [tests/qa/sprint04-graph-qa.test.ts](tests/qa/sprint04-graph-qa.test.ts)).
+
+---
+
+## Phase 5: Future Ecosystem & UX Candidates
+
 - [ ] **Live Preview `#+transclude:` Inline Cards**: Optional hover card or read-only widget preview when hovering/moving near `#+transclude:` directives in Live Preview.
 - [ ] **Incremental / Viewport-Paged Reading Rendering for Ultra-Long Documents (>5,000 lines)**: Chunked section hydration or idle scheduling if documents exceed ~3,000–5,000 lines with heavy math/tables.
 - [ ] **Configurable Callout Cards / Visual Presets**: Custom reading styles (callout blocks, theme presets) purely in `views/reading` and CSS without altering `.org` source syntax.

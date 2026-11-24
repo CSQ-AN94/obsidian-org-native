@@ -1,8 +1,8 @@
-# Org Native for Obsidian (Beta — v0.2.0-beta.1)
+# Org Native for Obsidian (Beta — v0.3.0-beta.1)
 
 **Core Philosophy: Org as Source of Truth · Emacs = Authoring & Composition · Obsidian = Native Reading & Interaction Layer.**
 
-`Org Native for Obsidian` adds Reading View, Live Preview, source editing, Org-roam node navigation, and read-only `#+transclude:` support for `.org` notes. Verified in live Obsidian Electron GUI (`12/12` checks passed on isolated `test-vault`) and stress-tested up to `5,000` synthetic Org nodes.
+`Org Native for Obsidian` adds Reading View, Live Preview, source editing, Org-roam node navigation, read-only `#+transclude:` support, and built-in **Org Knowledge Graph (Global + Local Graph)** for `.org` notes. Verified in live Obsidian Electron GUI (`12/12` Sprint 03 + `12/12` Sprint 04 checks passed on isolated `test-vault`) and benchmarked up to `5,000` synthetic Org nodes.
 
 ---
 
@@ -30,6 +30,12 @@
 - **Safety & Guardrails**:
   - Cycle detection (`status: "cycle"`), configurable nesting cap (`transclusionMaxDepth`, `1..8`), expansion & character budgets, vault-boundary path traversal & unsafe URI blocking, XSS sanitization, disabled task checkboxes inside transcluded fragments, clickable source attribution links, explicit warnings for unsupported `:params`, and automatic Reading View refresh when referenced source `.org` files change on disk.
 
+### Org Knowledge Graph — Global & Local Views (Sprint 04)
+- **Single-Index Force-Directed Canvas Engine (`src/core/graph/`, `src/views/graph/`)**: Powered by `d3-force` + `d3-quadtree` (ISC) and batched HiDPI Canvas2D, built exclusively on official Obsidian `ItemView` / `Workspace` APIs and reusing `OrgIdIndex` as the single source of truth without mutating `.org` files.
+- **Node & File Granularities + 3 Semantic Edge Types**: Toggle seamlessly between `id:<orgId>` heading-level nodes and `.org` file-level nodes; distinguishes **reference** (`[[id:...]]`, solid arrow), **transclusion** (`#+TRANSCLUDE:`, dashed curved line), and **structural** (dotted hierarchy/ownership edges, hidden by default), with automatic parallel-edge separation plus orphan, unresolved target, and duplicate `:ID:` indicators.
+- **Global Graph Controls**: Query search (`tag:...`, `file:...`, `path:...`, `todo:...`, `id:...`, text), tag/folder/property filters, color groups, collapsible sections, full-width precision physics/display sliders (double-click to reset + Restore Defaults), Dark & Light Obsidian theme synchronization, and persisted view state.
+- **Local Graph, Custom Icons & Bidirectional Reader Sync**: Distinct Lucide-weight custom SVG icons (`src/views/icons.ts`), 4-slot collision-free CJK/Latin label placement, `forceCollide` + 60fps hover easing, and a dedicated neighborhood pane (`1` / `2` / `3` depth hops, incoming/outgoing toggles) synchronized through `OrgReaderFocusBus` and `LocalGraphController`—heading clicks, cursor moves, and file switches auto-focus smoothly with scroll-jitter suppression and a **Lock** toggle; hovering opens an HTML-escaped preview popover + inspector card, and double-clicking jumps back to the target `.org` heading with `.org-heading-jump-highlight` while preserving Graph panes.
+
 ### Emacs Co-Editing & Data-Safety Guard
 - Read-only opening, folding, switching modes, hovering, and closing **never** write to disk and preserve LF and CRLF line endings byte-for-byte.
 - External Emacs edits reload cleanly when the buffer is clean; when unsaved local edits exist, auto-save pauses and offers **Reload from disk**, **Keep local & save**, or **Save local conflict copy**.
@@ -47,6 +53,9 @@
 - `Org Native: Open Org backlinks panel`
 - `Org Native: Quick open Org node by ID or title`
 - `Org Native: Show Org ID diagnostics` / `Rebuild Org ID index`
+- `Org Native: Open Org Knowledge Graph`
+- `Org Native: Open Local Org Graph`
+- `Org Native: Focus active node in Local Org Graph`
 - **Editor Keys**: `Tab` folds/unfolds heading or indents list item; `Shift-Tab` cycles document folding or outdents list item; `Enter` continues lists/checkboxes.
 
 ---
@@ -65,18 +74,20 @@ npm run deploy:test-vault   # Build and install into ./test-vault/.obsidian/plug
 
 1. Run `npm run deploy:test-vault`.
 2. Open Obsidian → **Open another vault** → **Open folder as vault** → select the `test-vault` folder in your checkout.
-3. Open `01-welcome-and-reading.org` through `06-transclusion-demo.org` to inspect Reading UX, cross-file navigation, backlinks, hover preview, diagnostics, and read-only transclusion.
+3. Open `01-welcome-and-reading.org` through `07-graph-showcase.org` to inspect Reading UX, cross-file navigation, backlinks, hover preview, diagnostics, read-only transclusion, and the Org Knowledge Graph.
 4. Automated live Obsidian Electron GUI verification against **isolated `test-vault`** (aborts with exit code `2` if `app.vault.getName()` is not `test-vault`):
    ```bash
    node scripts/qa-cdp-sprint03.mjs --port 9222 --expect-vault test-vault --screenshots --close-browser
+   node scripts/qa-cdp-sprint04.mjs --port 9222 --expect-vault test-vault --screenshots --close-browser
    ```
-5. Optional synthetic performance benchmark (`100` / `1,000` / `5,000` nodes, 3,000-line paper, 2,500-line CJK document, 20-slot + 4-level transclusion):
+5. Optional synthetic performance benchmarks (`100` / `1,000` / `5,000` nodes, reading/transclusion workloads, and Global/Local graph + `d3-force` + `d3-quadtree` workloads):
    ```bash
    node scripts/bench-synthetic.mjs
+   node scripts/bench-graph.mjs
    ```
 
-> **P0 Real Obsidian Electron GUI Status: `PASS (12/12)`**  
-> Verified against isolated `test-vault` via live Obsidian Electron CDP (`scripts/qa-cdp-sprint03.mjs`, `0` page/console errors) alongside `90/90` Vitest tests across `11` suites. See [the GUI verification checklist](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md) and [Sprint 03 report](SPRINT_03_REPORT.md).
+> **P0 Real Obsidian Electron GUI Status: `PASS (12/12)` (Sprint 03) & `PASS (12/12)` (Sprint 04)**  
+> Verified against isolated `test-vault` via live Obsidian Electron CDP (`scripts/qa-cdp-sprint04.mjs`, `0` page/console errors) alongside `134/134` Vitest tests across `15` suites. See [the GUI verification checklist](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md), [Sprint 03 report](SPRINT_03_REPORT.md), and [Sprint 04 report](SPRINT_04_REPORT.md).
 
 ---
 
@@ -86,10 +97,10 @@ npm run deploy:test-vault   # Build and install into ./test-vault/.obsidian/plug
 
 **AI development assistance** Gemini via [Google Antigravity](https://antigravity.google/).
 
-Org Native adapts the MIT-licensed [obsidian-org-live](https://github.com/zzeitt/obsidian-org-live) by zzeitt. Thanks to ESeNonFossiIo for Reading View and folding design references, Benoit Bazard for Org ID navigation references, and nobiot for documenting Org Transclusion behavior. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream revisions, attribution details, and license notices.
+Org Native adapts the MIT-licensed [obsidian-org-live](https://github.com/zzeitt/obsidian-org-live) by zzeitt and uses `d3-force` / `d3-quadtree` (ISC license, Mike Bostock) for its built-in Knowledge Graph engine. Thanks to ESeNonFossiIo for Reading View and folding design references, Benoit Bazard for Org ID navigation references, and nobiot for documenting Org Transclusion behavior. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream revisions, attribution details, and license notices.
 
 ## License
 
 Licensed under the [MIT License](LICENSE). Include [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) when distributing the compiled plugin.
 
-See the [Sprint 03 report](SPRINT_03_REPORT.md), [Sprint 02 report](SPRINT_02_REPORT.md), [contributor guidelines](AGENTS.md), and [interface documentation](docs/INTERFACES.md) for development details.
+See the [Sprint 04 report](SPRINT_04_REPORT.md), [Sprint 03 report](SPRINT_03_REPORT.md), [Sprint 02 report](SPRINT_02_REPORT.md), [contributor guidelines](AGENTS.md), and [interface documentation](docs/INTERFACES.md) for development details.

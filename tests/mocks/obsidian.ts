@@ -11,6 +11,12 @@ export function getLanguage(): string {
   return "en";
 }
 
+export const registeredIcons = new Map<string, string>();
+
+export function addIcon(iconId: string, svgContent: string): void {
+  registeredIcons.set(iconId, svgContent);
+}
+
 export function setIcon(el: HTMLElement, icon: string): void {
   el.dataset.icon = icon;
 }
@@ -167,6 +173,17 @@ export class ItemView {
   getIcon(): string {
     return "document";
   }
+  getState(): Record<string, unknown> {
+    return {};
+  }
+  async setState(_state: unknown, _result?: unknown): Promise<void> {}
+  addAction(_icon: string, title: string, callback: () => void): HTMLElement {
+    const btn = document.createElement("button");
+    attachObsidianDomHelpers(btn);
+    btn.setAttribute("aria-label", title);
+    btn.addEventListener("click", callback);
+    return btn;
+  }
   registerEvent(_ref: unknown): void {}
   registerDomEvent(el: EventTarget, type: string, cb: EventListener): void {
     el.addEventListener(type, cb);
@@ -216,6 +233,13 @@ export class Plugin {
   registerView(): void {}
   registerExtensions(): void {}
   addCommand(): void {}
+  addRibbonIcon(_icon: string, title: string, callback: () => void): HTMLElement {
+    const btn = document.createElement("button");
+    attachObsidianDomHelpers(btn);
+    btn.setAttribute("aria-label", title);
+    btn.addEventListener("click", callback);
+    return btn;
+  }
   addSettingTab(): void {}
   registerEvent(): void {}
   async loadData(): Promise<unknown> {
@@ -332,7 +356,12 @@ export function createMockApp() {
       getLeavesOfType: () => [],
       getActiveViewOfType: () => null,
       getActiveFile: (): TFile | null => null,
-      getLeaf: () => ({ openFile: async () => {} }),
+      activeLeaf: null as unknown,
+      getMostRecentLeaf: () => null as unknown,
+      getLeaf: (_newLeaf?: boolean | "tab" | "split" | "window") => ({
+        openFile: async () => {},
+        setViewState: async () => {},
+      }),
       getRightLeaf: () => ({ setViewState: async () => {}, openFile: async () => {} }),
       revealLeaf: () => {},
       detachLeavesOfType: () => {},

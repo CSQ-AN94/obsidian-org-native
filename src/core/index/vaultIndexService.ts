@@ -1,6 +1,11 @@
-import { App, Modal, Notice, TAbstractFile, TFile } from "obsidian";
+import { App, Modal, Notice, TAbstractFile, TFile, type WorkspaceLeaf } from "obsidian";
 import type OrgNativePlugin from "../../main";
-import { VIEW_TYPE_ORG } from "../../constants";
+import {
+  VIEW_TYPE_ORG,
+  VIEW_TYPE_ORG_BACKLINKS,
+  VIEW_TYPE_ORG_GRAPH,
+  VIEW_TYPE_ORG_LOCAL_GRAPH,
+} from "../../constants";
 import { resolveLanguage, translate, type TranslationKey, type UiLanguage } from "../../i18n";
 import type { OrgNodeEntry, OrgViewMode } from "../model/types";
 import { nodeLabel, type NodeLabelKey } from "../../views/nodes/nodeLabels";
@@ -392,7 +397,11 @@ export class VaultIndexService {
     this.index.recordNodeNotFound(id, reason, context);
   }
 
-  async navigateToId(id: string, preferredMode?: OrgViewMode): Promise<boolean> {
+  async navigateToId(
+    id: string,
+    preferredMode?: OrgViewMode,
+    options?: { preserveLeaf?: WorkspaceLeaf; highlight?: boolean }
+  ): Promise<boolean> {
     let res = this.index.resolveId(id);
 
     if (res.status === "missing") {
@@ -426,11 +435,15 @@ export class VaultIndexService {
       target = res.node;
     }
 
-    await this.openNode(target, preferredMode);
+    await this.openNode(target, preferredMode, options);
     return true;
   }
 
-  async openNode(node: OrgNodeEntry, preferredMode?: OrgViewMode): Promise<void> {
+  async openNode(
+    node: OrgNodeEntry,
+    preferredMode?: OrgViewMode,
+    options?: { preserveLeaf?: WorkspaceLeaf; highlight?: boolean }
+  ): Promise<void> {
     const abstract =
       this.app.vault.getAbstractFileByPath(node.filePath) ??
       this.app.vault.getFiles().find((f) => f.path === node.filePath);
@@ -444,32 +457,77 @@ export class VaultIndexService {
       return;
     }
 
+    const preservedViewTypes = new Set<string>([
+      VIEW_TYPE_ORG_GRAPH,
+      VIEW_TYPE_ORG_LOCAL_GRAPH,
+      VIEW_TYPE_ORG_BACKLINKS,
+    ]);
+
     let leaf = this.app.workspace
       .getLeavesOfType(VIEW_TYPE_ORG)
       .find((candidate) => (candidate.view as { file?: TFile }).file?.path === abstract.path);
 
     if (!leaf) {
-      leaf = this.app.workspace.getLeaf(false);
-      await leaf.openFile(abstract);
+      const ws = this.app.workspace as {
+        activeLeaf?: WorkspaceLeaf | null;
+        getMostRecentLeaf?: () => WorkspaceLeaf | null;
+        getLeaf: (newLeaf?: boolean | "tab" | "split" | "window") => WorkspaceLeaf;
+      };
+      const candidateCurrent =
+        ws.activeLeaf ?? ws.getMostRecentLeaf?.() ?? ws.getLeaf(false);
+      const currentType = (
+        candidateCurrent as { view?: { getViewType?: () => string } } | null | undefined
+      )?.view?.getViewType?.();
+
+      const shouldPreserve =
+        Boolean(options?.preserveLeaf && candidateCurrent === options.preserveLeaf) ||
+        (typeof currentType === "string" && preservedViewTypes.has(currentType));
+
+      if (shouldPreserve) {
+        const reusableOrgLeaf = this.app.workspace
+          .getLeavesOfType(VIEW_TYPE_ORG)
+          .find((candidate) => {
+            if (options?.preserveLeaf && candidate === options.preserveLeaf) return false;
+            const pinned = (
+              candidate as unknown as { getViewState?: () => { pinned?: boolean } }
+            ).getViewState?.()?.pinned;
+            return !pinned;
+          });
+        if (reusableOrgLeaf) {
+          leaf = reusableOrgLeaf;
+        } else {
+          leaf = ws.getLeaf("tab") ?? ws.getLeaf(true) ?? ws.getLeaf(false);
+        }
+        await leaf.openFile(abstract);
+      } else {
+        leaf = ws.getLeaf(false);
+        await leaf.openFile(abstract);
+      }
     }
 
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
     const view = leaf.view as {
       getMode?: () => OrgViewMode;
       setMode?: (m: OrgViewMode) => void;
-      jumpToLine?: (line: number) => void;
+      jumpToLine?: (line: number, opts?: { highlight?: boolean }) => void;
     };
 
     if (preferredMode && view.getMode?.() !== preferredMode && typeof view.setMode === "function") {
       view.setMode(preferredMode);
     }
 
-    const applyJump = () => view.jumpToLine?.(node.line);
+    const jumpOpts = { highlight: options?.highlight ?? true };
+    const applyJump = () => view.jumpToLine?.(node.line, jumpOpts);
     applyJump();
     window.requestAnimationFrame(applyJump);
   }
 
-  async openLocation(filePath: string, line: number, preferredMode?: OrgViewMode): Promise<void> {
+  async openLocation(
+    filePath: string,
+    line: number,
+    preferredMode?: OrgViewMode,
+    options?: { preserveLeaf?: WorkspaceLeaf; highlight?: boolean }
+  ): Promise<void> {
     await this.openNode(
       {
         filePath,
@@ -481,7 +539,8 @@ export class VaultIndexService {
         drawerStartLine: line,
         drawerEndLine: line,
       },
-      preferredMode
+      preferredMode,
+      options
     );
   }
 
