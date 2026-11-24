@@ -22,9 +22,19 @@
 
 ---
 
-## Phase 3: Real GUI Sign-Off & Advanced Ecosystem Extensions (Future)
+## Sprint 03 Beta (Delivered — `v0.2.0-beta.1`)
 
-- [ ] **Real Obsidian Electron GUI Sign-Off**: Execute [tests/qa/GUI_SMOKE_TEST_CHECKLIST.md](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md) against isolated `test-vault/` in desktop Obsidian (Light & Dark themes, CJK layout, screenshots).
-- [ ] **Live Preview Transclusion Previews**: Optional inline widget or hover card preview for `#+transclude:` lines while editing in Live Preview.
-- [ ] **Configurable Visual Themes / Callout Cards**: Custom reading styles (Notion-like colored callouts, multi-column cards) purely in `views/reading` and CSS without altering `.org` source syntax.
-- [ ] **Node Composer / Exporter Extensions**: Clean plugin extension seams built on top of `OrgSectionTree` and `OrgIdIndex`.
+- [x] **Real Obsidian Electron GUI Sign-Off (`PASS 12/12`)**: Executed full live Electron CDP verification (`scripts/qa-cdp-sprint03.mjs`) against isolated `test-vault/` across Light & Dark themes, 390px narrow panes, MathJax/Prism/aligned tables/local SVG, Hover Preview, Backlinks, Quick Open, Diagnostics, 4-level Transclusion, CRLF edit round-trips, Emacs external conflict banners, multi-pane same-file splits, and plugin reload lifecycle with `0` page/console errors ([tests/qa/GUI_SMOKE_TEST_CHECKLIST.md](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md)).
+- [x] **Reading & CJK UX Refinement**: Full-width CJK punctuation support around inline code/emphasis (`2ce8b76`), Hover Preview multi-line title clipping fix (`6b9a0d6`), softened `.org-transclusion` surface blend, synchronized `.org-transclusion-readonly-badge`, and 3-line backlink context clamp.
+- [x] **Data Integrity & Lifecycle Hardening**: Added `VaultIndexService.dispose()`, `TransclusionRefreshController.reset()`, dependency-filtered `OrgView` index refresh, and `14`-test concurrency/reliability stress suite ([tests/qa/sprint03-reliability.test.ts](tests/qa/sprint03-reliability.test.ts)).
+- [x] **Synthetic Scale & Performance Benchmarks**: Benchmarked `100` / `1,000` / `5,000` synthetic nodes, ~3,000-line academic papers, ~2,500-line CJK documents, and 20-slot + 4-level transclusion chains ([scripts/bench-synthetic.mjs](scripts/bench-synthetic.mjs), [tests/qa/sprint03-perf.test.ts](tests/qa/sprint03-perf.test.ts)).
+
+---
+
+## Phase 4: Sprint 04 Ecosystem & UX Candidates (Future)
+
+- [ ] **Built-in Org Node Graph View (P0 Priority)**: Dedicated canvas/SVG/force-directed Graph View powered by `OrgIdIndex` (since Obsidian's built-in core Graph View only graphs `.md` files and does not treat `.org` notes as first-class graph nodes), supporting local neighborhood + global node graphs, `link` vs `transclude` edge filtering, `:ROAM_REFS:` tags, and node click-to-open.
+- [ ] **Live Preview `#+transclude:` Inline Cards**: Optional hover card or read-only widget preview when hovering/moving near `#+transclude:` directives in Live Preview.
+- [ ] **Incremental / Viewport-Paged Reading Rendering for Ultra-Long Documents (>5,000 lines)**: Chunked section hydration or idle scheduling if documents exceed ~3,000–5,000 lines with heavy math/tables.
+- [ ] **Configurable Callout Cards / Visual Presets**: Custom reading styles (callout blocks, theme presets) purely in `views/reading` and CSS without altering `.org` source syntax.
+- [ ] **Extension Seams (Out of Scope for Reading Layer Core)**: Clean plugin hooks on `OrgSectionTree` and `OrgIdIndex` for external exporters or node composers.

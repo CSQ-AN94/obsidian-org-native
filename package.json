@@ -1,6 +1,6 @@
 {
   "name": "org-native",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-beta.1",
   "description": "Org as Source of Truth, Obsidian as Reading & Interaction Layer.",
   "main": "main.js",
   "type": "module",

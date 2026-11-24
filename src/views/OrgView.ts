@@ -1,8 +1,9 @@
-import { Notice, setIcon, TextFileView, WorkspaceLeaf } from "obsidian";
+import { EventRef, Notice, setIcon, TextFileView, WorkspaceLeaf } from "obsidian";
 import { Compartment, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type OrgNativePlugin from "../main";
 import { VIEW_TYPE_ORG } from "../constants";
+import type { VaultIndexChangeEvent } from "../core/index/vaultIndexService";
 import type { FoldLevelMode, OrgViewMode } from "../core/model/types";
 import { FileSyncGuard } from "../core/safety/fileSyncGuard";
 import type { LinkCallbacks } from "../util/links";
@@ -44,6 +45,8 @@ export class OrgView extends TextFileView {
   private outlineTimer: number | null = null;
   private savedReadingFolds: ReadingFoldSnapshot | null = null;
   private unsubscribeIndex: (() => void) | null = null;
+  private vaultEventRefs: EventRef[] = [];
+  private domListenersBound = false;
   private disposeHoverPreview: (() => void) | null = null;
   private transclusionRefresh = new TransclusionRefreshController(() => {
     if (this.mode === "reading") this.renderPreview(true);
@@ -78,6 +81,12 @@ export class OrgView extends TextFileView {
   }
 
   protected async onOpen(): Promise<void> {
+    this.cleanupRuntimeHandles();
+    this.transclusionRefresh.reset();
+    this.contentEl.empty();
+    this.editor?.destroy();
+    this.editor = null;
+
     this.contentEl.addClasses([
       "org-view",
       "markdown-source-view",
@@ -93,26 +102,35 @@ export class OrgView extends TextFileView {
     this.editorHost = this.contentEl.createDiv({ cls: "org-editor-host" });
     this.previewHost = this.contentEl.createDiv({ cls: "org-preview-host" });
     this.createEditor();
-    this.updateOutline(true);
-    this.sourceAction = this.addAction(
-      "code-2",
-      this.plugin.t("action.sourceMode"),
-      () => this.setMode(this.mode === "source" ? "live" : "source")
-    );
-    this.modeAction = this.addAction(
-      "pencil",
-      this.plugin.t("action.livePreview"),
-      () => this.toggleMode()
-    );
+    if ((this.data?.length ?? 0) > 0) {
+      this.updateOutline(true);
+    }
+    if (!this.sourceAction) {
+      this.sourceAction = this.addAction(
+        "code-2",
+        this.plugin.t("action.sourceMode"),
+        () => this.setMode(this.mode === "source" ? "live" : "source")
+      );
+    }
+    if (!this.modeAction) {
+      this.modeAction = this.addAction(
+        "pencil",
+        this.plugin.t("action.livePreview"),
+        () => this.toggleMode()
+      );
+    }
     this.updateModeAction();
-    this.registerDomEvent(this.contentEl, "click", (event) => {
-      if (this.mode !== "reading" && this.editor && event.target === this.editorHost) {
-        this.editor.focus();
-      }
-    });
+    if (!this.domListenersBound) {
+      this.domListenersBound = true;
+      this.registerDomEvent(this.contentEl, "click", (event) => {
+        if (this.mode !== "reading" && this.editor && event.target === this.editorHost) {
+          this.editor.focus();
+        }
+      });
+    }
     if (this.plugin.vaultIndex) {
-      this.unsubscribeIndex = this.plugin.vaultIndex.onDidChange(() => {
-        if (this.isRefreshingFromIndex) return;
+      this.unsubscribeIndex = this.plugin.vaultIndex.onDidChange((event) => {
+        if (this.isRefreshingFromIndex || !this.shouldRefreshForIndexEvent(event)) return;
         if (this.mode === "reading") {
           this.renderPreview(true);
         } else if (this.mode === "live" && this.editor) {
@@ -120,41 +138,69 @@ export class OrgView extends TextFileView {
         }
       });
     }
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        if (file.path === this.file?.path) return;
+    const vaultEvents = this.app.vault;
+    const modRef = vaultEvents.on("modify", (file) => {
+      if (file.path === this.file?.path) return;
+      this.transclusionRefresh.notifyFileChanged(file.path);
+    });
+    const renRef = vaultEvents.on("rename", (file, oldPath) => {
+      if (!this.transclusionRefresh.notifyFileChanged(oldPath)) {
         this.transclusionRefresh.notifyFileChanged(file.path);
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("rename", (file, oldPath) => {
-        if (!this.transclusionRefresh.notifyFileChanged(oldPath)) {
-          this.transclusionRefresh.notifyFileChanged(file.path);
-        }
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("delete", (file) => {
-        this.transclusionRefresh.notifyFileChanged(file.path);
-      })
-    );
+      }
+    });
+    const delRef = vaultEvents.on("delete", (file) => {
+      this.transclusionRefresh.notifyFileChanged(file.path);
+    });
+    this.vaultEventRefs = [modRef, renRef, delRef];
+    for (const ref of this.vaultEventRefs) this.registerEvent(ref);
   }
 
   protected async onClose(): Promise<void> {
+    this.cleanupRuntimeHandles();
+    this.transclusionRefresh.dispose();
+    if (this.syncGuard.shouldSaveOnClose()) {
+      await this.save();
+    }
+    this.editor?.destroy();
+    this.editor = null;
+  }
+
+  private cleanupRuntimeHandles(): void {
     if (this.outlineTimer != null) {
       window.clearTimeout(this.outlineTimer);
       this.outlineTimer = null;
     }
     this.disposeHoverPreview?.();
     this.disposeHoverPreview = null;
-    this.transclusionRefresh.dispose();
     this.unsubscribeIndex?.();
     this.unsubscribeIndex = null;
-    if (this.syncGuard.shouldSaveOnClose()) {
-      await this.save();
+    const vaultApi = this.app.vault as { offref?: (ref: EventRef) => void };
+    for (const ref of this.vaultEventRefs) {
+      vaultApi.offref?.(ref);
     }
-    this.editor?.destroy();
-    this.editor = null;
+    this.vaultEventRefs = [];
+  }
+
+  private shouldRefreshForIndexEvent(event?: VaultIndexChangeEvent): boolean {
+    if (!event || event.kind === "full" || !this.file) return true;
+    const currentPath = this.file.path;
+    if (event.filePath === currentPath || event.oldPath === currentPath) return true;
+    if (this.transclusionRefresh.tracksUnresolvedTargets()) return true;
+
+    const trackedDeps = this.transclusionRefresh.getTrackedDependencies();
+    if (
+      (event.filePath && trackedDeps.includes(event.filePath)) ||
+      (event.oldPath && trackedDeps.includes(event.oldPath))
+    ) {
+      return true;
+    }
+
+    const outgoing = this.plugin.vaultIndex?.index.getFileOutgoingTargetIds(currentPath);
+    if (!outgoing || outgoing.size === 0 || !event.affectedNodeIds) return false;
+    for (const id of event.affectedNodeIds) {
+      if (outgoing.has(id)) return true;
+    }
+    return false;
   }
 
   private buildLinkCallbacks(): LinkCallbacks {
@@ -371,6 +417,7 @@ export class OrgView extends TextFileView {
         this.lineEnding = result.content.includes("\r\n") ? "\r\n" : "\n";
         this.data = result.content;
         this.savedReadingFolds = null;
+        this.transclusionRefresh.reset();
         this.mode = this.plugin.settings.defaultMode;
         this.hideConflictBanner();
         this.replaceEditorFull(result.content.replace(/\r\n/g, "\n"));
@@ -416,7 +463,7 @@ export class OrgView extends TextFileView {
     this.hideConflictBanner();
     this.disposeHoverPreview?.();
     this.disposeHoverPreview = null;
-    this.transclusionRefresh.abortCurrent();
+    this.transclusionRefresh.reset();
     if (this.editor) {
       this.replaceEditorFull("");
     }
@@ -435,6 +482,9 @@ export class OrgView extends TextFileView {
     if (this.mode === "reading") {
       const existing = this.previewHost?.querySelector<HTMLElement>(".org-preview");
       if (existing) this.savedReadingFolds = getReadingFoldSnapshot(existing);
+    }
+    if (mode !== "reading") {
+      this.transclusionRefresh.abortCurrent();
     }
     if (mode === "reading" && this.mode !== "reading" && this.editor) {
       const scroller = this.editor.scrollDOM;

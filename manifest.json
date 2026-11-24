@@ -1,7 +1,7 @@
 {
   "id": "org-native",
   "name": "Org Native",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-beta.1",
   "minAppVersion": "1.5.0",
   "description": "Native Org-mode reading view, live preview, source editing, heading folding, and Org ID navigation for Obsidian.",
   "author": "Siqi Cai",

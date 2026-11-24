@@ -247,7 +247,7 @@ function buildSourceHeader(
   }
 
   const badge = document.createElement("span");
-  badge.className = "org-transclusion-badge";
+  badge.className = "org-transclusion-badge org-transclusion-readonly-badge";
   badge.textContent = t("transclusion.readOnlyBadge");
   header.appendChild(badge);
 

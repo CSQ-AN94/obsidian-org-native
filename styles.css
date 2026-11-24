@@ -2039,6 +2039,10 @@ body.is-mobile .org-table-container {
   border-left: 2px solid var(--background-modifier-border);
   padding-left: 0.5em;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .org-node-backlinks-issues {
@@ -2107,15 +2111,15 @@ body.is-mobile .org-table-container {
   box-sizing: border-box;
   position: fixed;
   z-index: var(--layer-popover, 60);
-  width: min(390px, calc(100vw - 24px));
-  max-height: min(360px, calc(100vh - 24px));
+  width: min(430px, calc(100vw - 24px));
+  max-height: min(380px, calc(100vh - 24px));
   display: flex;
   flex-direction: column;
   background: var(--background-primary);
   color: var(--text-normal);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
   border-radius: var(--radius-m, 8px);
-  box-shadow: var(--shadow-s, 0 8px 24px rgba(0, 0, 0, 0.22));
+  box-shadow: var(--shadow-l, 0 12px 32px rgba(0, 0, 0, 0.34));
   overflow: hidden;
   font-size: var(--font-ui-small, 0.88em);
 }
@@ -2130,15 +2134,16 @@ body.is-mobile .org-table-container {
 
 .org-node-hover-header {
   display: flex;
-  align-items: center;
-  gap: 0.45em;
-  padding: 0.55em 0.75em 0.35em;
+  align-items: flex-start;
+  gap: 0.5em;
+  padding: 0.6em 0.8em 0.45em;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .org-node-hover-level {
   flex-shrink: 0;
+  margin-top: 0.14em;
   padding: 0.08em 0.4em;
   border-radius: var(--radius-s, 4px);
   background: var(--background-modifier-hover);
@@ -2149,19 +2154,23 @@ body.is-mobile .org-table-container {
 }
 
 .org-node-hover-title-btn {
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
+  height: auto;
+  justify-content: flex-start;
   text-align: left;
   padding: 0;
   border: 0;
+  box-shadow: none;
   background: transparent;
   color: var(--text-normal);
   font-weight: 700;
   font-size: 1em;
+  line-height: 1.38;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .org-node-hover-title-btn:hover {
@@ -2402,15 +2411,17 @@ body.is-mobile .org-table-container {
 
 .org-transclusion {
   position: relative;
-  margin: 0.75em 0;
-  padding: 0.25em 0 0.25em 0.95em;
-  border-left: 2px solid var(--interactive-accent, var(--text-accent));
-  background: transparent;
+  margin: 0.8em 0;
+  padding: 0.5em 0.85em 0.55em 0.95em;
+  border-left: 2.5px solid var(--interactive-accent, var(--text-accent));
+  border-radius: 0 var(--radius-s, 4px) var(--radius-s, 4px) 0;
+  background: color-mix(in srgb, var(--interactive-accent, #7c8ef7) 4%, transparent);
 }
 
 .org-transclusion-nested {
-  margin: 0.5em 0;
+  margin: 0.55em 0;
   border-left-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
 }
 
 .org-transclusion-header {
@@ -2491,6 +2502,10 @@ body.is-mobile .org-table-container {
 
 .org-transclusion-sizer > :first-child {
   margin-top: 0;
+}
+
+.org-transclusion-sizer > .org-section:first-child > .org-heading-preview {
+  margin-top: 0.18em;
 }
 
 .org-transclusion-sizer > :last-child {

@@ -40,7 +40,7 @@ export function parseInline(text: string, base: number, options: InlineOptions =
   // 1. Verbatim and code (takes precedence over links/math/emphasis)
   {
     const re =
-      /(^|[\s([{'"\-：，。；！？、一-鿿぀-ヿ])([=~])(\S(?:[^\n]*?\S)?)\2(?=$|[\s)\]}"'.,;:!?\-：，。；！？、一-鿿぀-ヿ])/g;
+      /(^|[\s([{'‘“「『【（《"\-：，。；！？、一-鿿぀-ヿ])([=~])(\S(?:[^\n]*?\S)?)\2(?=$|[\s)\]}'’”」』】）》".,;:!?…\-：，。；！？、一-鿿぀-ヿ])/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
       const delimiterAt = m.index + m[1].length;
@@ -180,7 +180,7 @@ export function parseInline(text: string, base: number, options: InlineOptions =
       "+": "strike",
     };
     const re =
-      /(^|[\s([{'"‘“「『【\-：，。；！？、一-鿿぀-ヿ])([*_/+])(\S(?:[^\n]*?\S)?)\2(?=$|[\s)\]}"'’”」』】.,;:!?…\-：，。；！？、一-鿿぀-ヿ])/g;
+      /(^|[\s([{'‘“「『【（《"\-：，。；！？、一-鿿぀-ヿ])([*_/+])(\S(?:[^\n]*?\S)?)\2(?=$|[\s)\]}'’”」』】）》".,;:!?…\-：，。；！？、一-鿿぀-ヿ])/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
       const delimiterAt = m.index + m[1].length;

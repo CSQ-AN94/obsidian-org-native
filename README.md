@@ -1,8 +1,8 @@
-# Org Native for Obsidian (Sprint 02 Alpha — v0.2.0-alpha.1)
+# Org Native for Obsidian (Beta — v0.2.0-beta.1)
 
 **Core Philosophy: Org as Source of Truth · Emacs = Authoring & Composition · Obsidian = Native Reading & Interaction Layer.**
 
-`Org Native for Obsidian` adds Reading View, Live Preview, source editing, Org-roam node navigation, and read-only `#+transclude:` support for `.org` notes. The plugin is in active alpha development.
+`Org Native for Obsidian` adds Reading View, Live Preview, source editing, Org-roam node navigation, and read-only `#+transclude:` support for `.org` notes. Verified in live Obsidian Electron GUI (`12/12` checks passed on isolated `test-vault`) and stress-tested up to `5,000` synthetic Org nodes.
 
 ---
 
@@ -66,13 +66,17 @@ npm run deploy:test-vault   # Build and install into ./test-vault/.obsidian/plug
 1. Run `npm run deploy:test-vault`.
 2. Open Obsidian → **Open another vault** → **Open folder as vault** → select the `test-vault` folder in your checkout.
 3. Open `01-welcome-and-reading.org` through `06-transclusion-demo.org` to inspect Reading UX, cross-file navigation, backlinks, hover preview, diagnostics, and read-only transclusion.
-4. Optional CDP smoke verification against an Electron Obsidian session **already opened on `test-vault`**:
+4. Automated live Obsidian Electron GUI verification against **isolated `test-vault`** (aborts with exit code `2` if `app.vault.getName()` is not `test-vault`):
    ```bash
-   node scripts/qa-cdp-smoke.mjs --port 9222 --expect-vault test-vault --screenshots
+   node scripts/qa-cdp-sprint03.mjs --port 9222 --expect-vault test-vault --screenshots --close-browser
+   ```
+5. Optional synthetic performance benchmark (`100` / `1,000` / `5,000` nodes, 3,000-line paper, 2,500-line CJK document, 20-slot + 4-level transclusion):
+   ```bash
+   node scripts/bench-synthetic.mjs
    ```
 
-> **P0 Real Obsidian Electron GUI Status: `NOT_VERIFIED`**  
-> See [the manual GUI checklist](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md) for real desktop Obsidian acceptance checks.
+> **P0 Real Obsidian Electron GUI Status: `PASS (12/12)`**  
+> Verified against isolated `test-vault` via live Obsidian Electron CDP (`scripts/qa-cdp-sprint03.mjs`, `0` page/console errors) alongside `90/90` Vitest tests across `11` suites. See [the GUI verification checklist](tests/qa/GUI_SMOKE_TEST_CHECKLIST.md) and [Sprint 03 report](SPRINT_03_REPORT.md).
 
 ---
 
@@ -88,4 +92,4 @@ Org Native adapts the MIT-licensed [obsidian-org-live](https://github.com/zzeitt
 
 Licensed under the [MIT License](LICENSE). Include [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) when distributing the compiled plugin.
 
-See the [Sprint 02 report](SPRINT_02_REPORT.md), [contributor guidelines](AGENTS.md), and [interface documentation](docs/INTERFACES.md) for development details.
+See the [Sprint 03 report](SPRINT_03_REPORT.md), [Sprint 02 report](SPRINT_02_REPORT.md), [contributor guidelines](AGENTS.md), and [interface documentation](docs/INTERFACES.md) for development details.

@@ -174,6 +174,7 @@ export default class OrgNativePlugin extends Plugin {
 
   onunload(): void {
     this.nodeNavigation?.dispose();
+    this.vaultIndex?.dispose();
     this.outline?.destroy();
   }
 

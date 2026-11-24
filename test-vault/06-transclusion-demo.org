@@ -4,12 +4,12 @@
 
 本文件专门用于演示 Sprint 02 Alpha 新增的只读 =#+transclude:= 展开、嵌套引用、循环检测、未支持参数显式告警，以及反向链接 / 快速节点切换 / 悬停预览。
 
-* 1. 通过 Org `:ID:` 展开并调整标题层级 (`:level`) :transclusion:
+* 1. 通过 Org =:ID:= 展开并调整标题层级 (=:level=) :transclusion:
 下面将原子节点 [[id:node-episodic-memory][Episodic Memory Buffer]] 以二级标题只读嵌入此处：
 
 #+TRANSCLUDE: [[id:node-episodic-memory]] :level 2
 
-* 2. `:only-contents` 与 `:exclude-elements` 过滤 :transclusion:
+* 2. =:only-contents= 与 =:exclude-elements= 过滤 :transclusion:
 只嵌入 =node-kv-compression= 的正文与子内容，不保留其源标题与属性抽屉：
 
 #+TRANSCLUDE: [[id:node-kv-compression]] :only-contents
@@ -18,7 +18,7 @@
 
 #+TRANSCLUDE: [[file:02-math-code-and-tables.org::*LaTeX 数学公式测试]] :level 2 :exclude-elements "keyword"
 
-* 3. 行范围截取 (`:lines`) :transclusion:
+* 3. 行范围截取 (=:lines=) :transclusion:
 从欢迎文档抽取第 1–12 行：
 
 #+TRANSCLUDE: [[file:01-welcome-and-reading.org]] :lines 1-12
@@ -28,7 +28,7 @@
 
 #+TRANSCLUDE: [[id:transclusion-nested-parent]] :level 2
 
-下方测试 **相互循环引用保护**（=Cycle Node A= ⇄ =Cycle Node B=）：
+下方测试 *相互循环引用保护*（=Cycle Node A= ⇄ =Cycle Node B=）：
 
 #+TRANSCLUDE: [[id:transclusion-cycle-a]] :level 2
 
@@ -61,7 +61,7 @@
 
 #+TRANSCLUDE: [[id:missing-transclude-404]]
 
-- 含有暂未支持参数的引用（必须显式标出 `:thing-at-point`，不可静默吞掉）：
+- 含有暂未支持参数的引用（必须显式标出 =:thing-at-point=，不可静默吞掉）：
 
 #+TRANSCLUDE: [[id:welcome-core-idea]] :thing-at-point paragraph
 

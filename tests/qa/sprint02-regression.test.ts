@@ -11,6 +11,7 @@ import {
   createMemoryTransclusionProvider,
   OrgTransclusionEngine,
 } from "../../src/core/transclusion";
+import { TransclusionRefreshController } from "../../src/views/transclusion";
 import { translate, type TranslationKey } from "../../src/i18n";
 import { renderOrgPreview } from "../../src/views/reading/render";
 import {
@@ -1086,5 +1087,66 @@ describe("Sprint 02 Integrated End-to-End (OrgView + VaultIndex + Transclusion +
 
     await (h.view as unknown as { onClose(): Promise<void> }).onClose();
     h.plugin.nodeNavigation.dispose();
+  });
+
+  it("cancels pending index timers on VaultIndexService.dispose(), resets TransclusionRefreshController cleanly, and filters unrelated OrgView re-renders", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = createIntegratedHarness(
+        {
+          "open.org": "* Open\nSee [[id:linked-target][Target]].\n",
+          "target.org": "* Target\n:PROPERTIES:\n:ID: linked-target\n:END:\nTarget v1.\n",
+          "unrelated.org": "* Unrelated\nPlain note.\n",
+        },
+        "open.org"
+      );
+
+      await (h.view as unknown as { onOpen(): Promise<void> }).onOpen();
+      h.view.setViewData(h.files.get("open.org")!, true);
+
+      const renderSpy = vi.spyOn(h.view, "renderPreview");
+      renderSpy.mockClear();
+
+      // Unrelated file change in vaultIndex must NOT rebuild open.org Reading View
+      h.vaultIndex.upsertContent("unrelated.org", "* Unrelated\nEdited unrelated note.\n");
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      // Referenced target file change MUST trigger rebuild
+      h.vaultIndex.upsertContent(
+        "target.org",
+        "* Target\n:PROPERTIES:\n:ID: linked-target\n:END:\nTarget v2.\n"
+      );
+      expect(renderSpy).toHaveBeenCalledTimes(1);
+
+      // Scheduled index debounce is cancelled by dispose() without emitting post-dispose events
+      const changeSpy = vi.fn();
+      h.vaultIndex.onDidChange(changeSpy);
+      h.vaultIndex.scheduleFileIndex(new TFile("unrelated.org") as unknown as import("obsidian").TFile);
+      h.vaultIndex.dispose();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(changeSpy).not.toHaveBeenCalled();
+
+      // TransclusionRefreshController reset() clears old deps while remaining active
+      let refreshes = 0;
+      const controller = new TransclusionRefreshController(() => {
+        refreshes++;
+      });
+      const session = controller.beginHydration();
+      session.onDependency({ filePath: "target.org", status: "ok" });
+      expect(controller.getTrackedDependencies()).toEqual(["target.org"]);
+      controller.dispose();
+      controller.reset();
+      expect(controller.getTrackedDependencies()).toEqual([]);
+      const nextSession = controller.beginHydration();
+      expect(nextSession.isStale()).toBe(false);
+      nextSession.onDependency({ filePath: "next.org", status: "ok" });
+      expect(controller.notifyFileChanged("next.org")).toBe(true);
+      expect(refreshes).toBe(1);
+
+      await (h.view as unknown as { onClose(): Promise<void> }).onClose();
+      h.plugin.nodeNavigation.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

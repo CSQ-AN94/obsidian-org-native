@@ -80,6 +80,14 @@ export class TransclusionRefreshController {
     this.abortController = null;
   }
 
+  reset(): void {
+    this.disposed = false;
+    this.generation++;
+    this.abortCurrent();
+    this.dependencies.clear();
+    this.hasUnresolvedTargets = false;
+  }
+
   dispose(): void {
     this.disposed = true;
     this.generation++;

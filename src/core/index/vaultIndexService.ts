@@ -49,6 +49,7 @@ export class VaultIndexService {
   private pendingTimers = new Map<string, PendingTimerEntry>();
   private inFlightTasks = new Set<Promise<void>>();
   private pathGenerations = new Map<string, number>();
+  private disposed = false;
   private readonly debounceMs: number;
   private readonly batchSize: number;
 
@@ -67,7 +68,18 @@ export class VaultIndexService {
   }
 
   private emitChange(event: VaultIndexChangeEvent): void {
+    if (this.disposed) return;
     for (const listener of this.listeners) listener(event);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    for (const entry of this.pendingTimers.values()) {
+      window.clearTimeout(entry.timer);
+    }
+    this.pendingTimers.clear();
+    this.listeners.clear();
+    this.pathGenerations.clear();
   }
 
   getUiLanguage(): UiLanguage {
@@ -178,6 +190,7 @@ export class VaultIndexService {
   }
 
   scheduleFileIndex(file: TFile): void {
+    if (this.disposed) return;
     this.index.markFileStale(file.path);
     this.cancelPendingTimer(file.path);
 
@@ -210,6 +223,7 @@ export class VaultIndexService {
   }
 
   async initialize(): Promise<void> {
+    if (this.disposed) return;
     for (const entry of this.pendingTimers.values()) {
       window.clearTimeout(entry.timer);
     }
@@ -221,13 +235,15 @@ export class VaultIndexService {
       .filter((file) => file.extension.toLowerCase() === "org");
 
     for (let i = 0; i < orgFiles.length; i += this.batchSize) {
+      if (this.disposed) return;
       const batch = orgFiles.slice(i, i + this.batchSize);
       await Promise.all(
         batch.map(async (file) => {
+          if (this.disposed) return;
           const gen = this.pathGenerations.get(file.path) ?? 0;
           try {
             const content = await this.app.vault.cachedRead(file);
-            if ((this.pathGenerations.get(file.path) ?? 0) !== gen) return;
+            if (this.disposed || (this.pathGenerations.get(file.path) ?? 0) !== gen) return;
             const stats = getFileStats(file);
             this.index.upsertFile(file.path, content, stats);
           } catch (error) {
@@ -237,18 +253,20 @@ export class VaultIndexService {
       );
     }
 
+    if (this.disposed) return;
     this.index.markInitialized();
     this.emitChange({ kind: "full" });
   }
 
   async indexFile(file: TFile): Promise<void> {
+    if (this.disposed) return;
     this.cancelPendingTimer(file.path);
     const targetPath = file.path;
     const gen = this.pathGenerations.get(targetPath) ?? 0;
 
     try {
       const content = await this.app.vault.cachedRead(file);
-      if ((this.pathGenerations.get(targetPath) ?? 0) !== gen) return;
+      if (this.disposed || (this.pathGenerations.get(targetPath) ?? 0) !== gen) return;
       const stats = getFileStats(file);
       const res = this.index.upsertFile(targetPath, content, stats);
       if (res.changed) {
@@ -265,8 +283,11 @@ export class VaultIndexService {
   }
 
   upsertContent(filePath: string, content: string): void {
+    if (this.disposed) return;
     this.cancelPendingTimer(filePath);
-    const res = this.index.upsertFile(filePath, content);
+    const abstract = this.app.vault.getAbstractFileByPath(filePath);
+    const stats = abstract instanceof TFile ? getFileStats(abstract) : undefined;
+    const res = this.index.upsertFile(filePath, content, stats);
     if (res.changed) {
       this.emitChange({
         kind: "upsert",

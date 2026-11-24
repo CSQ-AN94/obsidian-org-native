@@ -353,6 +353,7 @@ export function createMockApp() {
       cachedRead: async () => "",
       create: async (p: string) => new TFile(p),
       on: () => ({}),
+      offref: () => {},
     },
   };
 }

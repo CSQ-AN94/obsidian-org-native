@@ -49,6 +49,20 @@ describe("Org parser & mixed EN/ZH/math/table/CRLF support", () => {
     expect(mathTokens[0].type === "math" && mathTokens[0].latex).toBe("E=mc^2");
     expect(tokens.some((t) => t.type === "footnote" && t.name === "1")).toBe(true);
     expect(tokens.some((t) => t.type === "timestamp" && t.active)).toBe(true);
+
+    // Full-width CJK punctuation around inline code & emphasis
+    const cjkPunctLine = "支持三种模式（=Reading= / =Live Preview= / =Source=）与【*加粗*】及《/斜体/》。";
+    const cjkTokens = parseInline(cjkPunctLine, 0);
+    expect(
+      cjkTokens
+        .filter((t) => t.type === "verbatim")
+        .map((t) => cjkPunctLine.slice(t.contentFrom, t.contentTo))
+    ).toEqual(["Reading", "Live Preview", "Source"]);
+    expect(
+      cjkTokens
+        .filter((t) => t.type === "emphasis")
+        .map((t) => cjkPunctLine.slice(t.contentFrom, t.contentTo))
+    ).toEqual(["加粗", "斜体"]);
   });
 
   it("parses multi-line math blocks and tables with <l>/<c>/<r> alignments", () => {

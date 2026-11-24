@@ -16,3 +16,6 @@ test-vault/.obsidian/plugins/org-native/main.js
 test-vault/.obsidian/plugins/org-native/manifest.json
 test-vault/.obsidian/plugins/org-native/styles.css
 test-vault/.obsidian/plugins/org-native/data.json
+
+# Generated Sprint 03 GUI verification screenshots (kept locally on disk, not committed)
+tests/qa/screenshots/*.png
