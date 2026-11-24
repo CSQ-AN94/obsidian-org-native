@@ -1,0 +1,16 @@
+Line 1: Leaf fixture preamble alpha
+Line 2: Leaf fixture preamble beta
+Line 3: Leaf fixture preamble gamma
+Line 4: Leaf fixture preamble delta
+Line 5: Leaf fixture preamble epsilon
+Line 6: Leaf fixture preamble zeta
+
+* Leaf Metrics
+:PROPERTIES:
+:ID: node-leaf-metrics
+:CUSTOM_ID: leaf-metrics
+:END:
+
+Aggregated leaf latency is 1.9 ms per step.
+
+#+transclude: [[file:../01-knowledge-nodes.org::#kv-compression]] :only-contents

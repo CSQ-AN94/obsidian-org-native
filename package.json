@@ -1,0 +1,33 @@
+{
+  "name": "org-native",
+  "version": "0.2.0-alpha.1",
+  "description": "Org as Source of Truth, Obsidian as Reading & Interaction Layer.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev": "node esbuild.config.mjs",
+    "build": "npm run check && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "deploy:test-vault": "npm run build && node scripts/deploy-test-vault.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "org-mode",
+    "orgmode",
+    "org-roam"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.1",
+    "@types/node": "^22.15.0",
+    "esbuild": "^0.25.5",
+    "happy-dom": "^17.0.0",
+    "obsidian": "^1.8.7",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.0"
+  }
+}

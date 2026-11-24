@@ -1,0 +1,51 @@
+#+TITLE: Org Native · 欢迎与阅读体验测试
+#+AUTHOR: Org Native Team
+#+DATE: 2026-11-24
+#+TODO: 待办(t) 进行中(p@) | 完成(d!) 取消(c)
+#+STARTUP: showall
+
+:PROPERTIES:
+:ID: org-native-welcome-root
+:CUSTOM_ID: welcome-root
+:END:
+
+* 待办 [#A] 核心理念：Org as Source of Truth :architecture:中文:
+:PROPERTIES:
+:ID: welcome-core-idea
+:CUSTOM_ID: core-idea
+:CREATED: [2026-11-24 Tue 15:00]
+:END:
+DEADLINE: <2026-11-30 Mon> SCHEDULED: <2026-11-25 Wed>
+
+欢迎体验 *Org Native for Obsidian*。本文件用于测试中英文混排、折叠、属性抽屉与三种显示模式（=Reading= / =Live Preview= / =Source=）。
+
+你可以在 Reading View 点击标题左侧的折叠箭头折叠子树，或在编辑模式使用 =Tab= / =Shift-Tab=。
+Property Drawer 默认折叠，点击上方摘要即可展开并查看原始 =:PROPERTIES:= 文本。
+
+** 进行中 行内格式与列表测试
+这是一段包含 *加粗*、/斜体/、_下划线_、+删除线+、=等宽原样= 与 ~行内代码~ 的中英文混排段落。
+支持跨文件 ID 链接：[[id:vla-memory-overview][跳转到 VLA Memory 论文笔记]]，也支持页面内链接：[[#core-idea][跳回核心理念]] 或 [[*未知 Org 语法安全保留][跳到未知语法章节]]。
+
+- [X] 原生接管 ~.org~ 扩展名
+- [X] Reading / Live Preview / Source 三模式切换
+- [ ] 在真实 Obsidian 中检查暗色/亮色主题排版
+  1. 子项目一：确认中文标签与 TODO 徽章对齐
+  2. 子项目二：测试外部 Emacs 修改冲突提示[fn:1]
+
+* 完成 未知 Org 语法安全保留 :compatibility:
+下面的未知指令与自定义块在 Reading View 中应安全呈现，在 Source / Live Preview 中原样保留，绝不丢弃：
+
+#+TRANSCLUDE: [[id:node-episodic-memory]] :level 2 :only-contents
+#+ATTR_HTML: :width 720px :class diagram
+#+CALL: summarize-metrics(table="results")
+
+#+BEGIN_CUSTOM_CALLOUT
+这是未内置解析器的自定义块内容，必须安全按原文展示且保存时零丢失。
+#+END_CUSTOM_CALLOUT
+
+-----
+
+# 这是注释行（Reading View 隐藏，Source 模式可见）
+: 这是 fixed-width 固定宽度行。
+
+[fn:1] 如在 Emacs 修改并保存此文件而 Obsidian 中存在未保存更改，顶部将出现冲突处理横幅，禁止静默覆盖。

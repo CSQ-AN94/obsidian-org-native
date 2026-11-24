@@ -1,0 +1,33 @@
+#+TITLE: Transclusion Edge Cases & Error Isolation
+
+* Cycle Guards
+#+transclude: [[id:node-self-cycle]]
+#+transclude: [[id:node-cycle-a]]
+
+* Depth Limit Guard
+#+transclude: [[id:node-deep-1]]
+
+* Missing & Duplicate Targets
+#+transclude: [[id:nonexistent-node-404]]
+#+transclude: [[id:dup-node-id]]
+#+transclude: [[file:does-not-exist.org]]
+#+transclude: [[file:01-knowledge-nodes.org::*No Such Heading]]
+
+* Vault Boundary & Scheme Security
+#+transclude: [[file:../../../etc/passwd]]
+#+transclude: [[file:/etc/passwd]]
+#+transclude: [[file:///etc/passwd]]
+#+transclude: [[file:~/.ssh/id_rsa]]
+#+transclude: [[file:C:\Windows\win.ini]]
+#+transclude: [[file:.obsidian/app.json]]
+#+transclude: [[file:%2e%2e/%2e%2e/secret.org]]
+#+transclude: [[javascript:alert(1)]]
+#+transclude: [[data:text/html,<script>alert(1)</script>]]
+#+transclude: [[https://example.com/remote.org]]
+
+* Unsupported Parameters & Untrusted HTML
+#+transclude: [[id:node-kv]] :expand-links :end "Stop" :unknown-flag
+#+transclude: [[id:node-untrusted-xss]]
+
+* Trailing Healthy Section
+Final paragraph remains intact after all errors above.

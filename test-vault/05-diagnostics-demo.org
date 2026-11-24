@@ -1,0 +1,22 @@
+#+TITLE: Diagnostics & Startup Fold Demo · 诊断与初始折叠测试
+#+STARTUP: content
+
+* 故意构造的重复 ID 示例 A :diagnostics:
+:PROPERTIES:
+:ID: demo-duplicate-id
+:END:
+
+此节点与下方节点故意共享相同的 =:ID:=，可在命令面板运行 *Org Native: Show Org ID diagnostics* 查看定位结果。
+
+* 故意构造的重复 ID 示例 B :diagnostics:
+:PROPERTIES:
+:ID: demo-duplicate-id
+:END:
+
+点击此处 [[id:demo-duplicate-id][重复 ID 跳转测试]] 将提示重复并跳转到首个匹配位置。
+
+* 故意构造的失效链接示例 :diagnostics:
+下面这条链接指向不存在的 ID，应显示失效虚线样式并在点击时给出友好提示：
+
+- 失效链接：[[id:missing-demo-404][不存在的目标节点]]
+- 正常跨文件链接：[[id:org-native-welcome-root][回到欢迎页根节点]]

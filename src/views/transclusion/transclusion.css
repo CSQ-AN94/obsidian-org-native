@@ -1,0 +1,164 @@
+/* ==========================================================================
+   Org Native — Transclusion Reading View Styles
+   Integrates transcluded content cleanly into Reading View prose while
+   preserving subtle source attribution, read-only state, and error callouts.
+   ========================================================================== */
+
+.org-transclude-slot {
+  display: none;
+}
+
+.org-transclusion {
+  position: relative;
+  margin: 0.75em 0;
+  padding: 0.25em 0 0.25em 0.95em;
+  border-left: 2px solid var(--interactive-accent, var(--text-accent));
+  background: transparent;
+}
+
+.org-transclusion-nested {
+  margin: 0.5em 0;
+  border-left-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.org-transclusion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35em 0.65em;
+  margin-bottom: 0.35em;
+  font-size: var(--font-ui-smaller, 0.78em);
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.org-transclusion-source-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45em;
+  color: var(--text-muted);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.org-transclusion-source-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.org-transclusion-source-title {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.org-transclusion-source-loc {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  color: var(--text-faint);
+}
+
+.org-transclusion-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05em 0.45em;
+  border-radius: var(--radius-s, 4px);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 0.88em;
+  letter-spacing: 0.02em;
+}
+
+.org-transclusion-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  margin: 0.25em 0 0.45em;
+  padding: 0.35em 0.6em;
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-secondary);
+  border: 1px solid var(--color-orange, #d29922);
+  font-size: var(--font-ui-smaller, 0.8em);
+  color: var(--text-normal);
+}
+
+.org-transclusion-warning.is-unsupported {
+  color: var(--color-orange, #d29922);
+  font-weight: 500;
+}
+
+.org-transclusion-body {
+  min-width: 0;
+}
+
+.org-transclusion-rendered {
+  margin: 0;
+  padding: 0;
+}
+
+.org-transclusion-sizer > :first-child {
+  margin-top: 0;
+}
+
+.org-transclusion-sizer > :last-child {
+  margin-bottom: 0;
+}
+
+.org-transclusion-empty {
+  font-size: var(--font-ui-small, 0.85em);
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* --- Error callouts ----------------------------------------------------- */
+
+.org-transclusion-error {
+  padding: 0.55em 0.85em;
+  border-left: 3px solid var(--text-error, #e5534b);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-secondary);
+}
+
+.org-transclusion-error-cycle {
+  border-left-color: var(--color-orange, #d29922);
+}
+
+.org-transclusion-error-depth-exceeded {
+  border-left-color: var(--color-orange, #d29922);
+}
+
+.org-transclusion-error-unsupported {
+  border-left-color: var(--text-muted);
+}
+
+.org-transclusion-error-title {
+  font-weight: 600;
+  color: var(--text-error, #e5534b);
+}
+
+.org-transclusion-error-cycle .org-transclusion-error-title,
+.org-transclusion-error-depth-exceeded .org-transclusion-error-title {
+  color: var(--color-orange, #d29922);
+}
+
+.org-transclusion-error-unsupported .org-transclusion-error-title {
+  color: var(--text-normal);
+}
+
+.org-transclusion-error-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  font-size: var(--font-ui-small, 0.86em);
+}
+
+.org-transclusion-error-reason {
+  color: var(--text-normal);
+}
+
+.org-transclusion-error-raw code {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  color: var(--text-muted);
+}

@@ -1,0 +1,44 @@
+#+TITLE: Assembled Research Article
+
+#+transclude: [[id:node-kv]] :only-contents
+
+* Section 1: Episodic Memory Overview
+#+transclude: [[id:node-episodic]]
+
+* Section 2: Demoted Graph Section
+#+transclude: [[id:node-graph]] :level 2
+
+** Section 2.1: Auto-Level Child
+#+transclude: [[id:node-kv]] :level
+
+** Section 2.2: Contents-Only Subtree
+#+transclude: [[id:node-episodic]] :only-contents :level 3
+
+** Section 2.3: Filtered Drawer & Planning
+#+transclude: [[id:node-episodic]] :exclude-elements "drawer planning"
+
+* Section 3: File & Subpath Transclusions
+#+transclude: [[file:01-knowledge-nodes.org::*Semantic Task Graph]] :level 2
+#+transclude: [[file:01-knowledge-nodes.org::#kv-compression]] :only-contents
+#+transclude: [[file:sub/04-nested-leaf.org]] :lines 1-6
+#+transclude: [[file:01-knowledge-nodes.org::metric-table]]
+#+transclude: [[file:01-knowledge-nodes.org::key-claim]]
+
+* Section 4: Nested Composition & Diamond Reuse
+#+transclude: [[id:node-composed]]
+#+transclude: [[id:node-kv]] :level 2
+
+* Section 5: Verbatim & Comment Immunity
+# #+transclude: [[id:node-episodic]]
+
+#+BEGIN_SRC org
+#+transclude: [[id:node-graph]]
+#+END_SRC
+
+#+BEGIN_EXAMPLE
+#+transclude: [[file:01-knowledge-nodes.org]]
+#+END_EXAMPLE
+
+#+BEGIN_COMMENT
+#+transclude: [[id:node-kv]]
+#+END_COMMENT

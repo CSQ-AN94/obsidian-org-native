@@ -1,0 +1,161 @@
+:PROPERTIES:
+:ID: kb-collection-root
+:END:
+#+TITLE: Knowledge Nodes Collection
+
+* Episodic Memory Buffer :memory:
+:PROPERTIES:
+:ID: node-episodic
+:CUSTOM_ID: episodic-memory
+:CREATED: [2026-11-24 Tue 09:00]
+:END:
+SCHEDULED: <2026-11-24 Tue>
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-11-24 Tue 09:05]
+:END:
+
+An *episodic buffer* stores compact keyframe embeddings with /temporal alignment/ and =cosine= retrieval. Inline math $s_t = \phi(o_t)$ links perception to memory.
+
+\begin{align}
+\alpha_t &= \mathrm{softmax}(q_t K^\top / \sqrt{d})
+\end{align}
+
+- [ ] Capture multi-view visual tokens
+- [X] Align proprioceptive state vectors
+
+#+BEGIN_SRC org
+# Fake directive inside source block — must NOT expand
+#+transclude: [[id:node-graph]]
+#+END_SRC
+
+** Retrieval Scoring
+| Metric | Top-1 | Top-5 |
+|--------+-------+-------|
+| Recall |  0.84 |  0.96 |
+
+#+BEGIN_SRC python
+def score_episode(query, keys):
+    return [float(query @ k) for k in keys]
+#+END_SRC
+
+* Semantic Task Graph :graph:
+:PROPERTIES:
+:ID: node-graph
+:CUSTOM_ID: semantic-graph
+:END:
+
+# Internal author comment line
+Maintains a directed acyclic graph of subgoal preconditions and triggers replanning on failure.
+
+#+NAME: metric-table
+| Stage     | Latency (ms) | Status |
+|-----------+--------------+--------|
+| Plan      |          4.2 | OK     |
+| Replan    |          7.8 | OK     |
+
+The task graph preserves invariant causal dependencies across manipulation steps. <<key-claim>>
+
+* KV-Cache Compression :efficiency:
+:PROPERTIES:
+:ID: node-kv
+:CUSTOM_ID: kv-compression
+:END:
+
+Retains attention sinks and salient visual tokens so long-horizon decoding stays within real-time budgets.
+
+* Composed Pipeline
+:PROPERTIES:
+:ID: node-composed
+:END:
+
+Top-level composition entry point pulling in the intermediate stage:
+#+transclude: [[id:node-mid]] :level 2
+
+* Mid Pipeline
+:PROPERTIES:
+:ID: node-mid
+:END:
+
+Intermediate stage delegating to the leaf file:
+#+transclude: [[file:sub/04-nested-leaf.org::*Leaf Metrics]] :level 3
+
+* Duplicate Entry One
+:PROPERTIES:
+:ID: dup-node-id
+:END:
+
+First definition of a duplicate ID node.
+
+* Duplicate Entry Two
+:PROPERTIES:
+:ID: dup-node-id
+:END:
+
+Second definition of a duplicate ID node.
+
+* Untrusted Node
+:PROPERTIES:
+:ID: node-untrusted-xss
+:END:
+
+<script>alert("xss")</script>
+<img src="x" onerror="alert(1)">
+[[javascript:alert(1)][Bad JS Link]]
+[[data:text/html,<script>evil()</script>][Bad Data Link]]
+Safe text after untrusted markup.
+
+* Self Cycle
+:PROPERTIES:
+:ID: node-self-cycle
+:END:
+
+#+transclude: [[id:node-self-cycle]]
+
+* Cycle A
+:PROPERTIES:
+:ID: node-cycle-a
+:END:
+
+#+transclude: [[id:node-cycle-b]]
+
+* Cycle B
+:PROPERTIES:
+:ID: node-cycle-b
+:END:
+
+#+transclude: [[id:node-cycle-a]]
+
+* Deep 1
+:PROPERTIES:
+:ID: node-deep-1
+:END:
+
+#+transclude: [[id:node-deep-2]]
+
+* Deep 2
+:PROPERTIES:
+:ID: node-deep-2
+:END:
+
+#+transclude: [[id:node-deep-3]]
+
+* Deep 3
+:PROPERTIES:
+:ID: node-deep-3
+:END:
+
+#+transclude: [[id:node-deep-4]]
+
+* Deep 4
+:PROPERTIES:
+:ID: node-deep-4
+:END:
+
+#+transclude: [[id:node-deep-5]]
+
+* Deep 5
+:PROPERTIES:
+:ID: node-deep-5
+:END:
+
+Reached level 5 leaf.

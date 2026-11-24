@@ -1,0 +1,76 @@
+#+TITLE: Org Transclusion & Node Navigation Demo · 跨节点引用与导航演示
+#+AUTHOR: Org Native Team
+#+DATE: 2026-11-24
+
+本文件专门用于演示 Sprint 02 Alpha 新增的只读 =#+transclude:= 展开、嵌套引用、循环检测、未支持参数显式告警，以及反向链接 / 快速节点切换 / 悬停预览。
+
+* 1. 通过 Org `:ID:` 展开并调整标题层级 (`:level`) :transclusion:
+下面将原子节点 [[id:node-episodic-memory][Episodic Memory Buffer]] 以二级标题只读嵌入此处：
+
+#+TRANSCLUDE: [[id:node-episodic-memory]] :level 2
+
+* 2. `:only-contents` 与 `:exclude-elements` 过滤 :transclusion:
+只嵌入 =node-kv-compression= 的正文与子内容，不保留其源标题与属性抽屉：
+
+#+TRANSCLUDE: [[id:node-kv-compression]] :only-contents
+
+只嵌入 =02-math-code-and-tables.org= 的 LaTeX 数学章节并过滤关键字行：
+
+#+TRANSCLUDE: [[file:02-math-code-and-tables.org::*LaTeX 数学公式测试]] :level 2 :exclude-elements "keyword"
+
+* 3. 行范围截取 (`:lines`) :transclusion:
+从欢迎文档抽取第 1–12 行：
+
+#+TRANSCLUDE: [[file:01-welcome-and-reading.org]] :lines 1-12
+
+* 4. 嵌套引用与循环保护 :transclusion:safety:
+下方先展示一层嵌套节点（=transclusion-nested-parent= 内部再引用 =node-semantic-graph=）：
+
+#+TRANSCLUDE: [[id:transclusion-nested-parent]] :level 2
+
+下方测试 **相互循环引用保护**（=Cycle Node A= ⇄ =Cycle Node B=）：
+
+#+TRANSCLUDE: [[id:transclusion-cycle-a]] :level 2
+
+** 嵌套中继节点 (Nested Parent)
+:PROPERTIES:
+:ID: transclusion-nested-parent
+:END:
+这是中间汇聚节点正文，下方嵌套引入语义任务图：
+
+#+TRANSCLUDE: [[id:node-semantic-graph]] :level 3
+
+** 循环节点 A (Cycle A)
+:PROPERTIES:
+:ID: transclusion-cycle-a
+:END:
+节点 A 引用节点 B：
+
+#+TRANSCLUDE: [[id:transclusion-cycle-b]]
+
+** 循环节点 B (Cycle B)
+:PROPERTIES:
+:ID: transclusion-cycle-b
+:END:
+节点 B 反向引用节点 A（渲染器应阻断循环并给出明确提示）：
+
+#+TRANSCLUDE: [[id:transclusion-cycle-a]]
+
+* 5. 失效目标、未支持参数与代码块免疫 :diagnostics:
+- 失效 ID 引用（应展示明确错误提示并出现在诊断面板）：
+
+#+TRANSCLUDE: [[id:missing-transclude-404]]
+
+- 含有暂未支持参数的引用（必须显式标出 `:thing-at-point`，不可静默吞掉）：
+
+#+TRANSCLUDE: [[id:welcome-core-idea]] :thing-at-point paragraph
+
+- 代码块中的假指令必须保留为纯代码，绝不能被展开或索引：
+
+#+BEGIN_SRC org
+* Fake Code Section
+:PROPERTIES:
+:ID: fake-transclude-target-id
+:END:
+#+TRANSCLUDE: [[id:fake-transclude-in-code]] :level 2
+#+END_SRC

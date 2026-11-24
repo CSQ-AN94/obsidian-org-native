@@ -1,0 +1,26 @@
+#+TITLE: VLA Memory 论文精读笔记
+#+FILETAGS: :paper:vla:memory:
+
+* TODO [#A] Embodied Memory for Vision-Language-Action Models :vla:reading:
+:PROPERTIES:
+:ID: vla-memory-overview
+:CUSTOM_ID: vla-overview
+:END:
+SCHEDULED: <2026-11-26 Thu>
+
+本文关注长程机器人操作中的视觉-语言-动作（VLA）记忆瓶颈：标准 VLA 策略仅依赖当前帧或极短历史窗口，难以应对遮挡恢复、多阶段子任务与跨回合经验复用。
+
+** 核心机制拆分
+1. *情景记忆检索*：详见原子节点 [[id:node-episodic-memory][Episodic Memory Buffer]]。
+2. *语义任务图*：结合 [[id:node-semantic-graph][Semantic Task Graph]] 维护当前子目标状态。
+3. *跨文档方法对比*：参见 [[id:welcome-core-idea][Org Native 核心定位]] 与 [[id:node-kv-compression][KV-Cache 压缩策略]]。
+
+** 关键实验指标
+| 方法 | 长程成功率 | 记忆开销 | 备注 |
+|------+------------+----------+------|
+| <l>  | <c>        | <r>      | <l>  |
+| Baseline VLA | 41.2% | 1.0x | 无显式记忆 |
+| Memory-Augmented VLA | *74.8%* | 1.35x | 检索 Top-K 关键帧 |
+
+** 预留 Transclusion 区域（Phase 2 展开）
+#+TRANSCLUDE: [[id:node-episodic-memory]] :level 3 :only-contents

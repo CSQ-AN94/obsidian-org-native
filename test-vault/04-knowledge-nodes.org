@@ -1,0 +1,28 @@
+#+TITLE: Atomic Knowledge Nodes · 原子知识节点库
+
+* Episodic Memory Buffer :memory:node:
+:PROPERTIES:
+:ID: node-episodic-memory
+:CUSTOM_ID: episodic-memory
+:ROAM_ALIASES: "情景记忆缓存"
+:END:
+
+将长程轨迹按视觉显著性变化切分为关键事件片段（keyframes + proprioception + subtask tag），在推理时通过余弦相似度检索并与当前观测对齐。
+
+返回主笔记：[[id:vla-memory-overview][VLA Memory 论文精读笔记]]。
+
+* Semantic Task Graph :graph:node:
+:PROPERTIES:
+:ID: node-semantic-graph
+:CUSTOM_ID: semantic-graph
+:END:
+
+维护高层子目标依赖有向无环图（DAG），当底层执行器失败或环境状态发生外部变化时触发重规划。
+
+* KV-Cache Compression for Long-Horizon VLA :efficiency:node:
+:PROPERTIES:
+:ID: node-kv-compression
+:CUSTOM_ID: kv-compression
+:END:
+
+在 Transformer 解码侧保留注意力汇（attention sinks）与周期性关键视觉 token，将长序列推理延迟控制在实时频率以内。
