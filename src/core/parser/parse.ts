@@ -38,6 +38,44 @@ function isUpperDrawerName(name: string): boolean {
   return /^[A-Z][A-Z0-9_-]*$/.test(name);
 }
 
+function countUnescapedPipes(raw: string): number {
+  let count = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "|" && raw[i - 1] !== "\\") count++;
+  }
+  return count;
+}
+
+function isTableRuleLine(raw: string): boolean {
+  return (
+    /^\s*\|[-+|: ]+\|?\s*$/.test(raw) &&
+    /-/.test(raw) &&
+    (raw.includes("+") || countUnescapedPipes(raw) >= 2)
+  );
+}
+
+function findMatchingBlockEnd(
+  rawLines: string[],
+  startIndex: number,
+  rawName: string
+): boolean {
+  let sawTopHeading = false;
+  for (let j = startIndex + 1; j < rawLines.length; j++) {
+    const rawWithCr = rawLines[j];
+    const cand = rawWithCr.endsWith("\r") ? rawWithCr.slice(0, -1) : rawWithCr;
+    const endM = /^\s*#\+END_([A-Za-z0-9_-]+)\s*$/i.exec(cand);
+    if (endM && endM[1].toUpperCase() === rawName) return true;
+    const beginM = /^\s*#\+BEGIN_([A-Za-z0-9_-]+)(?:\s|$)/i.exec(cand);
+    if (beginM && (beginM[1].toUpperCase() === rawName || sawTopHeading)) {
+      return false;
+    }
+    if (/^\*+\s+\S/.test(cand)) {
+      sawTopHeading = true;
+    }
+  }
+  return false;
+}
+
 const DISPLAY_MATH_ENV =
   /^\s*\\begin\{(align\*?|equation\*?|gather\*?|multline\*?|flalign\*?|alignat\*?|eqnarray\*?|displaymath|math)\}/;
 
@@ -96,6 +134,7 @@ export function parseOrgDoc(source: string): OrgDoc {
 
   let offset = 0;
   let block: BlockData | undefined;
+  let blockIsUnclosed = false;
   let drawer: DrawerData | undefined;
   let table: TableData | undefined;
   let tableLines: OrgLine[] = [];
@@ -173,6 +212,7 @@ export function parseOrgDoc(source: string): OrgDoc {
       const endMatch = /^\s*#\+END_([A-Za-z0-9_-]+)\s*$/i.exec(raw);
       if (endMatch && endMatch[1].toUpperCase() === block.rawName) {
         block.endLine = index;
+        block.contentEndLine = Math.max(block.beginLine, index - 1);
         line.kind = "block-end";
         line.block = block;
         const lastContent = block.endLine - 1;
@@ -180,44 +220,82 @@ export function parseOrgDoc(source: string): OrgDoc {
           lines[lastContent].blockLast = true;
         }
         block = undefined;
+        blockIsUnclosed = false;
         lines.push(line);
         continue;
       }
 
-      line.block = block;
-      switch (block.type) {
-        case "src":
-          line.kind = "src";
-          break;
-        case "quote":
-          line.kind = "quote";
-          break;
-        case "example":
-          line.kind = "example";
-          break;
-        case "center":
-          line.kind = "center";
-          break;
-        case "verse":
-          line.kind = "verse";
-          break;
-        case "comment":
-          line.kind = "comment-block";
-          break;
-        case "export":
-          line.kind = "export";
-          break;
-        default:
-          line.kind = "text";
+      if (
+        blockIsUnclosed &&
+        (/^\*+\s+\S/.test(raw) || /^\s*#\+BEGIN_([A-Za-z0-9_-]+)(?:\s|$)/i.test(raw))
+      ) {
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].block === block) {
+            lines[i].blockLast = true;
+            block.contentEndLine = lines[i].index;
+            break;
+          }
+        }
+        if (block.contentEndLine === undefined) {
+          block.contentEndLine = block.beginLine;
+        }
+        block = undefined;
+        blockIsUnclosed = false;
+      } else {
+        line.block = block;
+        switch (block.type) {
+          case "src":
+            line.kind = "src";
+            break;
+          case "quote":
+            line.kind = "quote";
+            break;
+          case "example":
+            line.kind = "example";
+            break;
+          case "center":
+            line.kind = "center";
+            break;
+          case "verse":
+            line.kind = "verse";
+            break;
+          case "comment":
+            line.kind = "comment-block";
+            break;
+          case "export":
+            line.kind = "export";
+            break;
+          default:
+            line.kind = "text";
+        }
+        if (line.kind !== "text" && !lines[lines.length - 1]?.blockFirst) {
+          if (block.beginLine === index - 1 || !line.blockFirst) line.blockFirst = true;
+        }
+        lines.push(line);
+        continue;
       }
-      if (line.kind !== "text" && !lines[lines.length - 1]?.blockFirst) {
-        if (block.beginLine === index - 1 || !line.blockFirst) line.blockFirst = true;
-      }
-      lines.push(line);
-      continue;
     }
 
-    const isTableLine = /^\s*\|/.test(raw);
+    const startsWithPipe = /^\s*\|/.test(raw);
+    const pipeCount = startsWithPipe ? countUnescapedPipes(raw) : 0;
+    const isRuleRaw = startsWithPipe && isTableRuleLine(raw);
+    let isTableLine = false;
+    if (startsWithPipe) {
+      if (table) {
+        isTableLine = isRuleRaw || pipeCount >= 2;
+      } else if (isRuleRaw || pipeCount >= 2) {
+        isTableLine = true;
+      } else if (index + 1 < rawLines.length) {
+        const nextWithCr = rawLines[index + 1];
+        const nextRaw = nextWithCr.endsWith("\r") ? nextWithCr.slice(0, -1) : nextWithCr;
+        if (
+          /^\s*\|/.test(nextRaw) &&
+          (isTableRuleLine(nextRaw) || countUnescapedPipes(nextRaw) >= 2)
+        ) {
+          isTableLine = true;
+        }
+      }
+    }
     if (isTableLine) {
       if (!table) {
         table = {
@@ -231,10 +309,9 @@ export function parseOrgDoc(source: string): OrgDoc {
         };
       }
       table.endLine = index;
-      const isRule = /^\s*\|[-+|: ]+\|?\s*$/.test(raw) && /-/.test(raw);
-      line.kind = isRule ? "table-rule" : "table";
+      line.kind = isRuleRaw ? "table-rule" : "table";
       line.table = table;
-      if (!isRule) {
+      if (!isRuleRaw) {
         const row = parseTableRow(raw, from);
         row.line = index;
         const isAlignmentRow =
@@ -298,6 +375,7 @@ export function parseOrgDoc(source: string): OrgDoc {
         beginFrom: from,
         beginTo: to,
       };
+      blockIsUnclosed = !findMatchingBlockEnd(rawLines, index, rawName);
       blocks.push(block);
       line.kind = "block-start";
       line.block = block;
@@ -354,7 +432,13 @@ export function parseOrgDoc(source: string): OrgDoc {
       continue;
     }
 
-    const listMatch = /^(\s*)([-+*]|\d+[.)])(\s+)(.*)$/.exec(raw);
+    if (/^\s*-{3,}\s*$/.test(raw)) {
+      line.kind = "rule";
+      lines.push(line);
+      continue;
+    }
+
+    const listMatch = /^(\s*)([-+*•]|\d+[.)])(?:(\s+)(.*)|(\s*))$/.exec(raw);
     if (listMatch) {
       const indent = listMatch[1].length;
       if (!(listMatch[2] === "*" && indent === 0)) {
@@ -397,12 +481,6 @@ export function parseOrgDoc(source: string): OrgDoc {
       continue;
     }
 
-    if (/^\s*-{5,}\s*$/.test(raw)) {
-      line.kind = "rule";
-      lines.push(line);
-      continue;
-    }
-
     if (/^\s*:(?:\s|$)/.test(raw)) {
       line.kind = "fixed-width";
       lines.push(line);
@@ -416,8 +494,12 @@ export function parseOrgDoc(source: string): OrgDoc {
     for (let i = lines.length - 1; i >= 0; i--) {
       if (lines[i].block === block) {
         lines[i].blockLast = true;
+        block.contentEndLine = lines[i].index;
         break;
       }
+    }
+    if (block.contentEndLine === undefined) {
+      block.contentEndLine = block.beginLine;
     }
   }
   finishTable();
@@ -516,8 +598,12 @@ function parseList(match: RegExpExecArray, from: number): ListData {
   const ordered = /^\d/.test(marker);
   const number = ordered ? parseInt(marker, 10) : 0;
 
-  let contentStart = match.index + match[1].length + marker.length + match[3].length;
-  const afterMarker = match[4];
+  let contentStart =
+    match.index +
+    match[1].length +
+    marker.length +
+    (match[3] ?? match[5] ?? "").length;
+  const afterMarker = match[4] ?? "";
   let checkbox: ListData["checkbox"];
   const cb = /^\[([ Xx-])\]\s+/.exec(afterMarker);
   if (cb) {
@@ -536,6 +622,164 @@ function parseList(match: RegExpExecArray, from: number): ListData {
     checkbox,
     contentFrom: from + contentStart,
   };
+}
+
+export interface VerticalArrowBlock {
+  startLine: number;
+  endLine: number;
+  from: number;
+  to: number;
+  labels: { text: string; from: number; lineIndex: number }[];
+}
+
+const VERTICAL_ARROW_SHAFT_RE = /^\s*[|│](?:\s+(.*))?$/;
+const VERTICAL_ARROW_TIP_RE = /^\s*[vV↓▼]\s*$/;
+
+/**
+ * Detect plain-text vertical flow arrows written as:
+ *   |
+ *   | Next: automate with Makefile [[id:...][skip]]
+ *   v
+ * Keeps underlying lines as `kind: "text"` so Org IDs remain indexed,
+ * while letting Reading View & Live Preview render a clean visual arrow.
+ */
+export function matchVerticalArrowBlock(
+  doc: OrgDoc,
+  lineIndices: number[],
+  startPos: number
+): { block: VerticalArrowBlock; nextPos: number } | null {
+  let pos = startPos;
+  const labels: { text: string; from: number; lineIndex: number }[] = [];
+  let shaftCount = 0;
+
+  while (pos < lineIndices.length) {
+    const line = doc.lines[lineIndices[pos]];
+    if (!line || line.kind !== "text") break;
+    if (countUnescapedPipes(line.text) >= 2) break;
+    const shaft = VERTICAL_ARROW_SHAFT_RE.exec(line.text);
+    if (!shaft) break;
+    shaftCount++;
+    const labelText = (shaft[1] ?? "").trim();
+    if (labelText) {
+      const pipeIdx = line.text.search(/[|│]/);
+      const afterPipe = line.text.slice(pipeIdx + 1);
+      const leadingSpaces = afterPipe.length - afterPipe.trimStart().length;
+      labels.push({
+        text: labelText,
+        from: line.from + pipeIdx + 1 + leadingSpaces,
+        lineIndex: line.index,
+      });
+    }
+    pos++;
+  }
+
+  if (shaftCount === 0 || pos >= lineIndices.length) return null;
+  const tipLine = doc.lines[lineIndices[pos]];
+  if (!tipLine || tipLine.kind !== "text" || !VERTICAL_ARROW_TIP_RE.test(tipLine.text)) {
+    return null;
+  }
+
+  const firstLine = doc.lines[lineIndices[startPos]];
+  return {
+    block: {
+      startLine: firstLine.index,
+      endLine: tipLine.index,
+      from: firstLine.from,
+      to: tipLine.to,
+      labels,
+    },
+    nextPos: pos + 1,
+  };
+}
+
+/**
+ * Scan all document lines for vertical ASCII flow arrow blocks.
+ */
+export function findVerticalArrowBlocks(doc: OrgDoc): VerticalArrowBlock[] {
+  const allIndices = doc.lines.map((l) => l.index);
+  const blocks: VerticalArrowBlock[] = [];
+  let pos = 0;
+  while (pos < allIndices.length) {
+    const match = matchVerticalArrowBlock(doc, allIndices, pos);
+    if (match) {
+      blocks.push(match.block);
+      pos = match.nextPos;
+    } else {
+      pos++;
+    }
+  }
+  return blocks;
+}
+
+const ALIGNED_SPACES_RE = /\S(?: {2,}|\t)\S/;
+const FLAG_ROW_RE = /^\s*-[A-Za-z0-9][^\s]*\s+\S/;
+
+/**
+ * Identify indices within a sequence of lines that form a space-aligned
+ * multi-column block (2+ consecutive `text` lines or same-indent `list` items
+ * where columns are padded with multiple spaces/tabs).
+ */
+export function computeAlignedTextLineSet(lines: OrgLine[]): Set<number> {
+  const aligned = new Set<number>();
+
+  // 1. Consecutive `text` lines with multi-space column padding
+  const isTextCandidate = lines.map((l) => l.kind === "text" && ALIGNED_SPACES_RE.test(l.text));
+  let i = 0;
+  while (i < lines.length) {
+    if (!isTextCandidate[i]) {
+      i++;
+      continue;
+    }
+    let start = i;
+    let end = i;
+    while (end + 1 < lines.length && isTextCandidate[end + 1]) {
+      end++;
+    }
+    // Include an immediately preceding/following flag line (e.g. `-o<filename> desc` right above `-wall        desc`)
+    if (start > 0 && lines[start - 1].kind === "text" && FLAG_ROW_RE.test(lines[start - 1].text)) {
+      start--;
+    }
+    if (end + 1 < lines.length && lines[end + 1].kind === "text" && FLAG_ROW_RE.test(lines[end + 1].text)) {
+      end++;
+    }
+    if (end - start + 1 >= 2) {
+      for (let k = start; k <= end; k++) {
+        aligned.add(lines[k].index);
+      }
+    }
+    i = end + 1;
+  }
+
+  // 2. Consecutive `list` items at the same indent with multi-space column padding
+  const isListCandidate = lines.map((l) => {
+    if (l.kind !== "list" || !l.list) return false;
+    const content = l.text.slice(l.list.contentFrom - l.from);
+    return ALIGNED_SPACES_RE.test(content);
+  });
+  i = 0;
+  while (i < lines.length) {
+    if (!isListCandidate[i]) {
+      i++;
+      continue;
+    }
+    const baseIndent = lines[i].list?.indent ?? 0;
+    let end = i;
+    while (
+      end + 1 < lines.length &&
+      isListCandidate[end + 1] &&
+      (lines[end + 1].list?.indent ?? -1) === baseIndent
+    ) {
+      end++;
+    }
+    if (end - i + 1 >= 2) {
+      for (let k = i; k <= end; k++) {
+        aligned.add(lines[k].index);
+      }
+    }
+    i = end + 1;
+  }
+
+  return aligned;
 }
 
 function parseTableRow(raw: string, from: number): TableRow {

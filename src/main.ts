@@ -421,6 +421,16 @@ class OrgNativeSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(this.plugin.t("settings.strictLineBreaks"))
+      .setDesc(this.plugin.t("settings.strictLineBreaksDesc"))
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.strictLineBreaks).onChange(async (value) => {
+          this.plugin.settings.strictLineBreaks = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName(this.plugin.t("settings.enableTransclusion"))
       .setDesc(this.plugin.t("settings.enableTransclusionDesc"))
       .addToggle((toggle) =>

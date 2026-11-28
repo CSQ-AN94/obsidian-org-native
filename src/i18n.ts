@@ -49,6 +49,9 @@ const en = {
   "settings.readingFontScaleDesc": "Scale multiplier for Reading View body text (0.85 to 1.25).",
   "settings.cjkTypography": "Optimize CJK + Latin typography",
   "settings.cjkTypographyDesc": "Enable balanced line-breaking and spacing for mixed Chinese and English text.",
+  "settings.strictLineBreaks": "Strict Org line breaks",
+  "settings.strictLineBreaksDesc":
+    "Ignore single line breaks inside paragraphs (Emacs fill-paragraph style). When off (default), single newlines render as line breaks.",
   "settings.enableTransclusion": "Render #+transclude directives",
   "settings.enableTransclusionDesc": "Expand read-only #+transclude: nodes in Reading View without modifying source files.",
   "settings.transclusionMaxDepth": "Max transclusion nesting depth",
@@ -144,7 +147,7 @@ const en = {
   "switcher.placeholder": "Search Org nodes by title, heading path, file, :ID:, or :CUSTOM_ID:...",
   "switcher.empty": "No matching Org ID nodes indexed in vault.",
 
-  "transclusion.readOnlyBadge": "Read-only",
+  "transclusion.readOnlyBadge": "Embedded",
   "transclusion.openSource": "Open source node",
   "transclusion.unsupportedParams": "Unsupported options",
   "transclusion.errorMissing": "Transclusion target not found",
@@ -224,6 +227,9 @@ const zh: Record<TranslationKey, string> = {
   "settings.readingFontScaleDesc": "阅读视图正文字号缩放比例（0.85 至 1.25）。",
   "settings.cjkTypography": "优化中英文混排",
   "settings.cjkTypographyDesc": "优化中文与英文/代码混排时的换行规则与段落间距。",
+  "settings.strictLineBreaks": "严格折叠段落内单换行",
+  "settings.strictLineBreaksDesc":
+    "开启后遵循 Org 自动折行习惯，将段落内单次回车拼接为同一行；关闭时（默认）保留每行换行，更贴近日常速记排版。",
   "settings.enableTransclusion": "展开 #+transclude 引用内容",
   "settings.enableTransclusionDesc": "在阅读视图中以只读方式展开 #+transclude: 节点，绝不修改源文件。",
   "settings.transclusionMaxDepth": "Transclusion 最大嵌套深度",
@@ -319,7 +325,7 @@ const zh: Record<TranslationKey, string> = {
   "switcher.placeholder": "按标题、标题路径、文件名、:ID: 或 :CUSTOM_ID: 搜索 Org 节点...",
   "switcher.empty": "Vault 中尚未索引到匹配该搜索词的 Org ID 节点。",
 
-  "transclusion.readOnlyBadge": "只读引用",
+  "transclusion.readOnlyBadge": "嵌入预览",
   "transclusion.openSource": "打开源节点",
   "transclusion.unsupportedParams": "未支持参数",
   "transclusion.errorMissing": "未找到 Transclusion 目标",

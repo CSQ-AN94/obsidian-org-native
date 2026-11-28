@@ -8,7 +8,12 @@ import type {
   TableData,
 } from "../../core/model/types";
 import { escapeHtml, hydrateMath, renderInlineHtml } from "../../core/parser/inlineRender";
-import { parseOrgDoc } from "../../core/parser/parse";
+import {
+  computeAlignedTextLineSet,
+  matchVerticalArrowBlock,
+  parseOrgDoc,
+  type VerticalArrowBlock,
+} from "../../core/parser/parse";
 import { buildSectionTree } from "../../core/parser/sectionTree";
 import { OrgNativeSettings } from "../../settings";
 import { appendSanitizedHtml, createDetachedEl, replaceWithSanitizedHtml } from "../../util/dom";
@@ -27,10 +32,116 @@ export interface PreviewRenderOptions {
 }
 
 const TRANSCLUDE_KEYWORD_RE = /^\s*#\+TRANSCLUDE(?:\[[^\]]*\])?:/i;
-const FOOTNOTE_DEF_RE = /^\s*\[fn:([^\]\n]+)\]\s+(.*)$/;
+const FOOTNOTE_DEF_RE = /^\s*\[fn:([^\]\n]+)\]\s*(.*)$/;
 const CJK_BOUNDARY_CHAR_RE =
   /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/;
+const DOC_METADATA_KEYWORD_RE =
+  /^(?:TITLE|SUBTITLE|AUTHOR|EMAIL|DATE|DESCRIPTION|KEYWORDS|LANGUAGE|FILETAGS|TAGS|CATEGORY|STARTUP|OPTIONS|TODO|SEQ_TODO|TYP_TODO|SETUPFILE|INCLUDE|PROPERTY|EXPORT_[A-Z0-9_]+|ROAM_[A-Z0-9_]+)$/;
+
+function isDocumentMetadataKeyword(keyUpper: string): boolean {
+  return DOC_METADATA_KEYWORD_RE.test(keyUpper);
+}
+
 const SAFE_WIDTH_RE = /^\d+(?:\.\d+)?(?:px|%|em|rem|vw)$/;
+
+function normalizeImageWidth(rawWidth: string): string | undefined {
+  const trimmed = rawWidth.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return `${trimmed}px`;
+  if (SAFE_WIDTH_RE.test(trimmed)) return trimmed;
+  return undefined;
+}
+
+function unescapeOrgBlockLine(raw: string): string {
+  return raw.replace(/^(\s*),(\*+|#\+)/, "$1$2");
+}
+
+function stripFixedWidthPrefix(raw: string): string {
+  return raw.replace(/^\s*:(?: |$)/, "");
+}
+
+function leadingIndent(raw: string): number {
+  let count = 0;
+  while (count < raw.length && (raw[count] === " " || raw[count] === "\t")) {
+    count += raw[count] === "\t" ? 4 : 1;
+    count++;
+  }
+  return count;
+}
+
+function formatAlignedLineHtml(rendered: string, raw: string): { html: string; aligned: boolean } {
+  const aligned = /(?:^\s{2,}|\S(?: {2,}|\t)\S)/.test(raw);
+  if (!aligned) return { html: rendered, aligned: false };
+  return { html: `<span class="org-aligned-line">${rendered}</span>`, aligned: true };
+}
+
+function parseDescriptionListContent(
+  content: string
+): { term: string; termLen: number; desc: string; descOffset: number } | null {
+  const tagShort = /^(\s*)(tag)(\s*::?\s*)(\[\[.+)$/i.exec(content);
+  if (tagShort) {
+    const term = tagShort[2];
+    const descOffset = tagShort[1].length + tagShort[2].length + tagShort[3].length;
+    return { term, termLen: term.length, desc: tagShort[4], descOffset };
+  }
+
+  // Only inspect "::" outside links, verbatim, code, or math spans.
+  const protectedRanges: { from: number; to: number }[] = [];
+  const protectRe = /\[\[[^[\]\n]*(?:\]\[[^[\]\n]*)?\]\]|([=~])\S(?:[^\n]*?\S)?\1/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = protectRe.exec(content))) {
+    protectedRanges.push({ from: pm.index, to: pm.index + pm[0].length });
+  }
+
+  const sepRe = /\s+::(?:\s+|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = sepRe.exec(content))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (protectedRanges.some((r) => start < r.to && end > r.from)) continue;
+    const term = content.slice(0, start);
+    if (!term.trim()) return null;
+    return {
+      term,
+      termLen: term.length,
+      desc: content.slice(end),
+      descOffset: end,
+    };
+  }
+  return null;
+}
+
+function parseInlineTableRowFallback(raw: string, from: number, lineIndex: number): TableData | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("|")) return null;
+  const pipes: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "|" && raw[i - 1] !== "\\") pipes.push(i);
+  }
+  if (pipes.length < 2) return null;
+  const starts = pipes.slice();
+  const ends = pipes.slice(1);
+  if (raw.slice(pipes[pipes.length - 1] + 1).trim() !== "") ends.push(raw.length);
+  const cells = ends.map((end, idx) => {
+    const start = starts[idx] + 1;
+    const slice = raw.slice(start, end);
+    const leading = slice.length - slice.trimStart().length;
+    const trailing = slice.length - slice.trimEnd().length;
+    return {
+      from: from + start + leading,
+      to: from + end - trailing,
+      text: raw.slice(start + leading, end - trailing),
+    };
+  });
+  return {
+    id: -1,
+    startLine: lineIndex,
+    endLine: lineIndex,
+    from,
+    to: from + raw.length,
+    rows: [{ line: lineIndex, cells }],
+    ruleAfter: [],
+  };
+}
 
 function isTranscludeKeywordLine(text: string): boolean {
   return TRANSCLUDE_KEYWORD_RE.test(text);
@@ -92,7 +203,9 @@ function headingHtml(
   const h = line.heading;
   if (!h) return "";
   const level = Math.min(h.level, 6);
+  const levelClass = Math.min(h.level, 9);
   const title = line.text.slice(h.titleFrom - line.from, h.titleTo - line.from);
+  const isEmptyHeading = !title.trim() && !h.keyword && !h.priority && h.tags.length === 0;
   const mainParts: string[] = [];
   if (h.keyword) {
     const safeKey = h.keyword.text.toLowerCase().replace(/[^a-z0-9_-]/g, "");
@@ -130,7 +243,9 @@ function headingHtml(
     : `<span class="org-fold-spacer" aria-hidden="true"></span>`;
   return `<h${level} id="${escapeHtml(id)}" data-heading="${escapeHtml(
     plainHeading
-  )}" class="org-heading-preview org-level-${level}" data-level="${
+  )}" class="org-heading-preview org-level-${levelClass}${
+    isEmptyHeading ? " is-empty-heading" : ""
+  }" data-level="${
     h.level
   }">${foldSlot}<span class="org-heading-content"><span class="org-heading-main">${mainParts.join(
     " "
@@ -154,7 +269,10 @@ function renderListBlock(
   lineIndices: number[],
   startPos: number,
   opts: InlineOpts,
-  previewOpts: PreviewRenderOptions
+  previewOpts: PreviewRenderOptions,
+  parentLevel = 0,
+  sectionKey = "list",
+  alignedLines?: Set<number>
 ): { html: string; nextPos: number } {
   type StackEntry = { indent: number; tag: "ul" | "ol" };
   const stack: StackEntry[] = [];
@@ -162,8 +280,16 @@ function renderListBlock(
   let pos = startPos;
 
   while (pos < lineIndices.length) {
-    const line = doc.lines[lineIndices[pos]];
+    let scan = pos;
+    let blanksBefore = 0;
+    while (scan < lineIndices.length && doc.lines[lineIndices[scan]]?.kind === "blank") {
+      blanksBefore++;
+      scan++;
+    }
+    if (blanksBefore > 1) break;
+    const line = doc.lines[lineIndices[scan]];
     if (!line || line.kind !== "list" || !line.list) break;
+    pos = scan;
     const list = line.list;
     const tag: "ul" | "ol" = list.ordered ? "ol" : "ul";
 
@@ -190,25 +316,114 @@ function renderListBlock(
     }
 
     const content = line.text.slice(list.contentFrom - line.from);
-    const body = inline(content, list.contentFrom, opts);
+    const descMatch = !list.ordered && !list.checkbox ? parseDescriptionListContent(content) : null;
+    const body = descMatch
+      ? `<span class="org-desc-term">${inline(
+          descMatch.term,
+          list.contentFrom,
+          opts
+        )}</span>${
+          descMatch.desc
+            ? `<span class="org-desc-body">${inline(
+                descMatch.desc,
+                list.contentFrom + descMatch.descOffset,
+                opts
+              )}</span>`
+            : ""
+        }`
+      : inline(content, list.contentFrom, opts);
+
     const rawBox = list.checkbox
       ? line.text.slice(list.checkbox.from - line.from, list.checkbox.to - line.from)
       : "";
     const partial = rawBox === "[-]";
     const taskState = list.checkbox ? (list.checkbox.checked ? "x" : partial ? "-" : " ") : "";
-    const liClass = list.checkbox
-      ? list.checkbox.checked
-        ? "task-list-item is-checked"
-        : partial
-        ? "task-list-item is-partial"
-        : "task-list-item"
-      : "";
-    const liAttrs = list.checkbox ? ` class="${liClass}" data-task="${taskState}"` : "";
+    const liClassParts: string[] = [];
+    if (list.checkbox) {
+      liClassParts.push("task-list-item");
+      if (list.checkbox.checked) liClassParts.push("is-checked");
+      else if (partial) liClassParts.push("is-partial");
+    }
+    if (descMatch) {
+      liClassParts.push("org-desc-item");
+    }
+    if (alignedLines?.has(line.index)) {
+      liClassParts.push("org-aligned-list-item");
+    }
+    const liAttrs =
+      (liClassParts.length > 0 ? ` class="${liClassParts.join(" ")}"` : "") +
+      (list.checkbox ? ` data-task="${taskState}"` : "");
     const itemContent = list.checkbox
       ? `${taskCheckbox(line, previewOpts, partial)}<span class="org-task-text">${body}</span>`
       : body;
     html += `<li${liAttrs}>${itemContent}`;
     pos++;
+
+    // Consume indented continuation content (prose, code/example blocks, images, tables) under this <li>.
+    const contLines: number[] = [];
+    while (pos < lineIndices.length) {
+      let look = pos;
+      let contBlanks = 0;
+      while (look < lineIndices.length && doc.lines[lineIndices[look]]?.kind === "blank") {
+        contBlanks++;
+        look++;
+      }
+      if (contBlanks > 1 || look >= lineIndices.length) break;
+      const nextLine = doc.lines[lineIndices[look]];
+      if (
+        !nextLine ||
+        nextLine.kind === "list" ||
+        nextLine.kind === "heading" ||
+        nextLine.kind === "drawer-start" ||
+        nextLine.kind === "rule"
+      ) {
+        break;
+      }
+      if (leadingIndent(nextLine.text) <= list.indent) break;
+
+      while (pos < look) {
+        contLines.push(lineIndices[pos]);
+        pos++;
+      }
+      if (nextLine.kind === "block-start" && nextLine.block) {
+        const endLine =
+          nextLine.block.endLine ?? nextLine.block.contentEndLine ?? nextLine.index;
+        while (pos < lineIndices.length && lineIndices[pos] <= endLine) {
+          contLines.push(lineIndices[pos]);
+          pos++;
+        }
+      } else if (nextLine.kind === "table" || nextLine.kind === "table-rule") {
+        const endLine = nextLine.table?.endLine ?? nextLine.index;
+        while (pos < lineIndices.length && lineIndices[pos] <= endLine) {
+          contLines.push(lineIndices[pos]);
+          pos++;
+        }
+      } else if (nextLine.kind === "math-block" && nextLine.mathBlock) {
+        const endLine = nextLine.mathBlock.endLine;
+        while (pos < lineIndices.length && lineIndices[pos] <= endLine) {
+          contLines.push(lineIndices[pos]);
+          pos++;
+        }
+      } else {
+        contLines.push(lineIndices[pos]);
+        pos++;
+      }
+    }
+
+    if (contLines.length > 0) {
+      const contHtml = renderLineSequence(
+        doc,
+        contLines,
+        opts,
+        previewOpts,
+        false,
+        parentLevel,
+        `${sectionKey}:li:${line.index}`
+      ).trim();
+      if (contHtml) {
+        html += `<div class="org-list-continuation">${contHtml}</div>`;
+      }
+    }
   }
 
   while (stack.length > 0) {
@@ -318,9 +533,18 @@ function renderPlanningLine(line: OrgLine, opts: InlineOpts): string {
 function renderBlock(doc: OrgDoc, line: OrgLine, opts: InlineOpts): { html: string; endLine: number } {
   const block = line.block;
   if (!block) return { html: "", endLine: line.index };
-  const endLine = block.endLine ?? doc.lines.length - 1;
-  const contentLines = doc.lines.slice(block.beginLine + 1, endLine);
-  const raw = contentLines.map((l) => l.text).join("\n");
+  const returnEndLine = block.endLine ?? block.contentEndLine ?? doc.lines.length - 1;
+  const sliceEndExclusive =
+    block.endLine !== undefined
+      ? block.endLine
+      : (block.contentEndLine ?? doc.lines.length - 1) + 1;
+  const contentLines = doc.lines.slice(block.beginLine + 1, sliceEndExclusive);
+  const rawLinesText = contentLines.map((l) => l.text);
+  const raw = rawLinesText.join("\n");
+  const unescapedRaw =
+    block.type === "src" || block.type === "example"
+      ? rawLinesText.map(unescapeOrgBlockLine).join("\n")
+      : raw;
 
   switch (block.type) {
     case "src": {
@@ -334,9 +558,9 @@ function renderBlock(doc: OrgDoc, line: OrgLine, opts: InlineOpts): { html: stri
         )}"><div class="org-code-header"><span class="org-code-lang">${escapeHtml(
           headerLabel
         )}</span><span class="org-code-copy-slot"></span></div><pre${language}${langAttr}><code${language}>${escapeHtml(
-          raw
+          unescapedRaw
         )}</code></pre></div>`,
-        endLine,
+        endLine: returnEndLine,
       };
     }
     case "quote": {
@@ -351,29 +575,29 @@ function renderBlock(doc: OrgDoc, line: OrgLine, opts: InlineOpts): { html: stri
         .filter(Boolean)
         .map((p) => `<p>${p}</p>`)
         .join("");
-      return { html: `<blockquote>${paragraphs}</blockquote>`, endLine };
+      return { html: `<blockquote>${paragraphs}</blockquote>`, endLine: returnEndLine };
     }
     case "example":
-      return { html: `<pre class="org-example">${escapeHtml(raw)}</pre>`, endLine };
+      return { html: `<pre class="org-example">${escapeHtml(unescapedRaw)}</pre>`, endLine: returnEndLine };
     case "center": {
       const content = raw
         .split(/\n\s*\n/)
         .map((p) => `<p>${inline(p, 0, opts)}</p>`)
         .join("");
-      return { html: `<div class="org-center">${content}</div>`, endLine };
+      return { html: `<div class="org-center">${content}</div>`, endLine: returnEndLine };
     }
     case "verse":
-      return { html: `<pre class="org-verse">${escapeHtml(raw)}</pre>`, endLine };
+      return { html: `<pre class="org-verse">${escapeHtml(raw)}</pre>`, endLine: returnEndLine };
     case "comment":
-      return { html: "", endLine };
+      return { html: "", endLine: returnEndLine };
     case "export":
-      return { html: `<pre class="org-export">${escapeHtml(raw)}</pre>`, endLine };
+      return { html: `<pre class="org-export">${escapeHtml(raw)}</pre>`, endLine: returnEndLine };
     default:
       return {
         html: `<div class="org-special-block-wrap"><div class="org-special-block-label">${escapeHtml(
           block.rawName
         )}</div><pre class="org-special-block">${escapeHtml(raw)}</pre></div>`,
-        endLine,
+        endLine: returnEndLine,
       };
   }
 }
@@ -407,11 +631,15 @@ function tryConsumeImageFigure(
       caption = m[2].trim();
       seenDirective = true;
       pos++;
-    } else if (key === "ATTR_HTML") {
+    } else if (key === "ATTR_HTML" || key === "ATTR_ORG") {
       const wMatch = /:width\s+([^\s]+)/i.exec(m[2]);
-      if (wMatch && SAFE_WIDTH_RE.test(wMatch[1])) {
-        width = wMatch[1];
+      if (wMatch) {
+        const normalized = normalizeImageWidth(wMatch[1]);
+        if (normalized) width = normalized;
       }
+      seenDirective = true;
+      pos++;
+    } else if (key === "NAME" || key === "SRCNAME") {
       seenDirective = true;
       pos++;
     } else {
@@ -441,6 +669,56 @@ function tryConsumeImageFigure(
   };
 }
 
+function renderVerticalFlowArrow(block: VerticalArrowBlock, opts: InlineOpts): string {
+  const bodyHtml =
+    block.labels.length > 0
+      ? `<div class="org-flow-arrow-body">${block.labels
+          .map(
+            (label) =>
+              `<div class="org-flow-arrow-label">${inline(label.text, label.from, opts)}</div>`
+          )
+          .join("")}</div>`
+      : "";
+  return `<div class="org-flow-arrow" role="figure" aria-label="Flow arrow"><span class="org-flow-arrow-rail" aria-hidden="true"><span class="org-flow-arrow-stem"></span><span class="org-flow-arrow-head"></span></span>${bodyHtml}</div>`;
+}
+
+function renderProseParagraph(
+  paragraph: OrgLine[],
+  inlineOpts: InlineOpts,
+  previewOpts: PreviewRenderOptions,
+  cjkMode: boolean
+): string {
+  if (paragraph.length === 1) {
+    const single = paragraph[0];
+    const renderedSingle = inline(single.text, single.from, inlineOpts).trim();
+    if (/^<img\b[^>]*>$/i.test(renderedSingle)) {
+      return `<figure class="org-figure">${renderedSingle}</figure>`;
+    }
+    const formatted = formatAlignedLineHtml(renderedSingle, single.text);
+    return `<p>${formatted.html}</p>`;
+  }
+  const preserveBreaks = previewOpts.settings.strictLineBreaks === false;
+  const content = paragraph
+    .map((l, idx) => {
+      const rendered = inline(l.text, l.from, inlineOpts);
+      const formatted = formatAlignedLineHtml(rendered, l.text);
+      if (idx >= paragraph.length - 1) return formatted.html;
+      if (/<br class="org-linebreak">$/.test(rendered)) {
+        return formatted.html;
+      }
+      const nextLine = paragraph[idx + 1];
+      const nextAligned = /(?:^\s{2,}|\S(?: {2,}|\t)\S)/.test(nextLine.text);
+      if (preserveBreaks || formatted.aligned || nextAligned) {
+        return formatted.html + "<br>";
+      }
+      const joiner =
+        cjkMode && endsWithCjk(l.text) && startsWithCjk(nextLine.text) ? "" : " ";
+      return formatted.html + joiner;
+    })
+    .join("");
+  return `<p>${content}</p>`;
+}
+
 function renderLineSequence(
   doc: OrgDoc,
   lineIndices: number[],
@@ -454,62 +732,76 @@ function renderLineSequence(
   let pos = 0;
   let drawerCount = 0;
   const cjkMode = previewOpts.settings.cjkTypography !== false;
+  const alignedLines = computeAlignedTextLineSet(
+    lineIndices.map((idx) => doc.lines[idx]).filter((l): l is OrgLine => !!l)
+  );
 
   if (skipInitialKeywords) {
-    let start = 0;
-    while (start < lineIndices.length && doc.lines[lineIndices[start]]?.kind === "blank") {
-      start++;
-    }
-    let end = start;
-    while (
-      end < lineIndices.length &&
-      doc.lines[lineIndices[end]]?.kind === "keyword" &&
-      !isTranscludeKeywordLine(doc.lines[lineIndices[end]].text)
-    ) {
-      end++;
-    }
-    if (end > start) {
-      const entries: { key: string; value: string }[] = [];
-      const rawLines: string[] = [];
-      const fileTags: string[] = [];
-      for (let j = start; j < end; j++) {
-        const text = doc.lines[lineIndices[j]].text;
-        rawLines.push(text);
-        const match = /^\s*#\+([A-Za-z0-9_-]+)(?:\[[^\]]*\])?:\s*(.*)$/.exec(text);
-        if (match) {
-          const upper = match[1].toUpperCase();
-          if (upper === "FILETAGS") {
-            for (const tag of parseFileTags(match[2])) {
-              if (!fileTags.includes(tag)) fileTags.push(tag);
-            }
-          }
-          if (upper !== "TITLE") {
-            entries.push({ key: upper, value: match[2] });
-          }
+    let cursor = 0;
+    const entries: { key: string; value: string }[] = [];
+    const rawKeywordLines: string[] = [];
+    const fileTags: string[] = [];
+    const preambleDrawersHtml: string[] = [];
+
+    while (cursor < lineIndices.length) {
+      const l = doc.lines[lineIndices[cursor]];
+      if (!l) {
+        cursor++;
+        continue;
+      }
+      if (l.kind === "blank" || l.kind === "comment") {
+        cursor++;
+        continue;
+      }
+      if (l.kind === "keyword" && !isTranscludeKeywordLine(l.text)) {
+        const match = /^\s*#\+([A-Za-z0-9_-]+)(?:\[[^\]]*\])?:\s*(.*)$/.exec(l.text);
+        const upper = match?.[1].toUpperCase() ?? "";
+        if (!upper || !isDocumentMetadataKeyword(upper)) {
+          break;
         }
+        rawKeywordLines.push(l.text);
+        if (upper === "FILETAGS") {
+          for (const tag of parseFileTags(match![2])) {
+            if (!fileTags.includes(tag)) fileTags.push(tag);
+          }
+        } else if (upper !== "TITLE") {
+          entries.push({ key: upper, value: match![2] });
+        }
+        cursor++;
+        continue;
       }
-      if (fileTags.length > 0) {
-        const chips = fileTags
-          .map(
-            (name) =>
-              `<a href="#${escapeHtml(name)}" class="tag org-tag org-filetag" data-tag="${escapeHtml(
-                name
-              )}" target="_blank" rel="noopener nofollow">#${escapeHtml(name)}</a>`
-          )
-          .join("");
-        html += `<div class="org-filetags">${chips}</div>`;
+      if (l.kind === "drawer-start" && l.drawer?.name.toUpperCase() === "PROPERTIES") {
+        const key = `${sectionKey}:properties:${drawerCount++}`;
+        preambleDrawersHtml.push(renderDrawer(doc, l.drawer, previewOpts.settings, key));
+        const endLine = l.drawer.endLine ?? l.index;
+        cursor = advancePastLineIndex(lineIndices, cursor, endLine);
+        continue;
       }
-      if (previewOpts.settings.propertiesDisplay !== "hidden" && entries.length > 0) {
-        html += propertiesCard(
-          entries,
-          rawLines.join("\n"),
-          "metadata",
-          previewOpts.settings.propertiesDisplay === "expanded",
-          "metadata"
-        );
-      }
-      pos = end;
+      break;
     }
+
+    if (fileTags.length > 0) {
+      const chips = fileTags
+        .map(
+          (name) =>
+            `<a href="#${escapeHtml(name)}" class="tag org-tag org-filetag" data-tag="${escapeHtml(
+              name
+            )}" target="_blank" rel="noopener nofollow">#${escapeHtml(name)}</a>`
+        )
+        .join("");
+      html += `<div class="org-filetags">${chips}</div>`;
+    }
+    html += preambleDrawersHtml.join("");
+    if (previewOpts.settings.propertiesDisplay !== "hidden" && entries.length > 0) {
+      html += propertiesCard(
+        entries,
+        rawKeywordLines.join("\n"),
+        "metadata",
+        previewOpts.settings.propertiesDisplay === "expanded",
+        "metadata"
+      );
+    }
+    pos = cursor;
   }
 
   while (pos < lineIndices.length) {
@@ -527,7 +819,16 @@ function renderLineSequence(
         pos++;
         break;
       case "list": {
-        const res = renderListBlock(doc, lineIndices, pos, inlineOpts, previewOpts);
+        const res = renderListBlock(
+          doc,
+          lineIndices,
+          pos,
+          inlineOpts,
+          previewOpts,
+          parentLevel,
+          sectionKey,
+          alignedLines
+        );
         html += res.html;
         pos = res.nextPos;
         break;
@@ -589,30 +890,49 @@ function renderLineSequence(
         if (m) {
           const key = m[1].toUpperCase();
           if (key === "TRANSCLUDE") {
-            if (previewOpts.settings.enableTransclusion) {
+            const val = m[2].trim();
+            if (previewOpts.settings.enableTransclusion && val) {
               html += `<div class="org-transclude-slot" data-transclude-raw="${escapeHtml(
                 line.text
-              )}" data-line="${line.index}" data-parent-level="${parentLevel}"><div class="org-keyword-line org-transclude-fallback"><span class="org-keyword-key">TRANSCLUDE</span><span class="org-keyword-value">${escapeHtml(
+              )}" data-line="${line.index}" data-parent-level="${parentLevel}"><div class="org-keyword-line org-transclude-fallback"><span class="org-keyword-key">TRANSCLUDE</span> <span class="org-keyword-value">${escapeHtml(
                 m[2]
               )}</span></div></div>`;
             } else {
-              html += `<div class="org-keyword-line org-keyword-transclude"><span class="org-keyword-key">TRANSCLUDE</span><span class="org-keyword-value">${escapeHtml(
-                m[2]
-              )}</span></div>`;
+              html += `<div class="org-keyword-line org-keyword-transclude${
+                val ? "" : " org-keyword-empty"
+              }"><span class="org-keyword-key">TRANSCLUDE</span>${
+                val ? ` <span class="org-keyword-value">${escapeHtml(m[2])}</span>` : ""
+              }</div>`;
             }
             pos++;
             break;
           }
           if (
             key === "TITLE" ||
-            /^(OPTIONS|STARTUP|TODO|SEQ_TODO|TYP_TODO|FILETAGS|SETUPFILE|INCLUDE)$/.test(key)
+            /^(OPTIONS|STARTUP|TODO|SEQ_TODO|TYP_TODO|FILETAGS|SETUPFILE|INCLUDE|CAPTION)$/.test(
+              key
+            )
           ) {
+            pos++;
+            break;
+          }
+          if (key === "SRCNAME" || key === "NAME") {
+            pos++;
+            break;
+          }
+          if (key === "RESULTS" || key === "RESULT") {
+            const val = m[2].trim();
+            if (val) {
+              html += `<div class="org-results-block"><span class="org-results-label">Result</span><code class="org-results-inline">${escapeHtml(
+                val
+              )}</code></div>`;
+            }
             pos++;
             break;
           }
           html += `<div class="org-keyword-line"><span class="org-keyword-key">${escapeHtml(
             key
-          )}</span><span class="org-keyword-value">${escapeHtml(m[2])}</span></div>`;
+          )}</span> <span class="org-keyword-value">${escapeHtml(m[2])}</span></div>`;
         }
         pos++;
         break;
@@ -623,7 +943,7 @@ function renderLineSequence(
           pos < lineIndices.length &&
           doc.lines[lineIndices[pos]]?.kind === "fixed-width"
         ) {
-          parts.push(doc.lines[lineIndices[pos]].text);
+          parts.push(stripFixedWidthPrefix(doc.lines[lineIndices[pos]].text));
           pos++;
         }
         html += `<pre class="org-fixed-width">${escapeHtml(parts.join("\n"))}</pre>`;
@@ -634,10 +954,78 @@ function renderLineSequence(
         pos++;
         break;
       case "text": {
+        const flowMatch = matchVerticalArrowBlock(doc, lineIndices, pos);
+        if (flowMatch) {
+          html += renderVerticalFlowArrow(flowMatch.block, inlineOpts);
+          pos = flowMatch.nextPos;
+          break;
+        }
+
+        const firstTextLine = doc.lines[lineIndices[pos]];
+        if (firstTextLine) {
+          const fnMatch = FOOTNOTE_DEF_RE.exec(firstTextLine.text);
+          if (fnMatch) {
+            const name = fnMatch[1];
+            const rawBody = fnMatch[2];
+            const bodyOffset = rawBody ? firstTextLine.text.indexOf(rawBody) : 0;
+            const nextLine =
+              pos + 1 < lineIndices.length ? doc.lines[lineIndices[pos + 1]] : undefined;
+            if (
+              rawBody.trimStart().startsWith("|") &&
+              nextLine &&
+              (nextLine.kind === "table" || nextLine.kind === "table-rule")
+            ) {
+              const firstRowTable = parseInlineTableRowFallback(
+                rawBody,
+                firstTextLine.from + Math.max(0, bodyOffset),
+                firstTextLine.index
+              );
+              const targetTable = nextLine.table;
+              if (firstRowTable && targetTable) {
+                const combined: TableData = {
+                  ...targetTable,
+                  rows: [...firstRowTable.rows, ...targetTable.rows],
+                  ruleAfter:
+                    nextLine.kind === "table-rule"
+                      ? [0, ...targetTable.ruleAfter.map((r) => r + 1)]
+                      : targetTable.ruleAfter.map((r) => r + 1),
+                };
+                html += `<div class="org-footnote-def" id="fn-def-${escapeHtml(
+                  name
+                )}" data-footnote="${escapeHtml(name)}"><span class="org-footnote-def-label">[${escapeHtml(
+                  name
+                )}]</span><span class="org-footnote-def-body">${renderTable(
+                  combined,
+                  inlineOpts
+                )}</span></div>`;
+                pos = advancePastLineIndex(lineIndices, pos + 1, targetTable.endLine);
+                break;
+              }
+            }
+            html += `<div class="org-footnote-def" id="fn-def-${escapeHtml(
+              name
+            )}" data-footnote="${escapeHtml(name)}"><span class="org-footnote-def-label">[${escapeHtml(
+              name
+            )}]</span><span class="org-footnote-def-body">${inline(
+              rawBody,
+              firstTextLine.from + Math.max(0, bodyOffset),
+              inlineOpts
+            )}</span></div>`;
+            pos++;
+            break;
+          }
+        }
+
         const paragraphs: OrgLine[][] = [];
         let current: OrgLine[] = [];
         while (pos < lineIndices.length && doc.lines[lineIndices[pos]]?.kind === "text") {
           const textLine = doc.lines[lineIndices[pos]];
+          if (textLine.text.trim() !== "" && FOOTNOTE_DEF_RE.test(textLine.text)) {
+            break;
+          }
+          if (matchVerticalArrowBlock(doc, lineIndices, pos)) {
+            break;
+          }
           if (textLine.text.trim() === "") {
             if (current.length > 0) paragraphs.push(current);
             current = [];
@@ -648,40 +1036,31 @@ function renderLineSequence(
         }
         if (current.length > 0) paragraphs.push(current);
         for (const paragraph of paragraphs) {
-          if (paragraph.length === 1) {
-            const single = paragraph[0];
-            const fnMatch = FOOTNOTE_DEF_RE.exec(single.text);
-            if (fnMatch) {
-              const name = fnMatch[1];
-              const bodyOffset = single.text.indexOf(fnMatch[2]);
-              html += `<div class="org-footnote-def" id="fn-def-${escapeHtml(
-                name
-              )}" data-footnote="${escapeHtml(name)}"><span class="org-footnote-def-label">[${escapeHtml(
-                name
-              )}]</span><span class="org-footnote-def-body">${inline(
-                fnMatch[2],
-                single.from + Math.max(0, bodyOffset),
-                inlineOpts
-              )}</span></div>`;
-              continue;
-            }
-            const renderedSingle = inline(single.text, single.from, inlineOpts).trim();
-            if (/^<img\b[^>]*>$/i.test(renderedSingle)) {
-              html += `<figure class="org-figure">${renderedSingle}</figure>`;
-              continue;
+          const paraAligned = computeAlignedTextLineSet(paragraph);
+          if (paraAligned.size === 0) {
+            html += renderProseParagraph(paragraph, inlineOpts, previewOpts, cjkMode);
+            continue;
+          }
+          const runs: { aligned: boolean; lines: OrgLine[] }[] = [];
+          for (const l of paragraph) {
+            const isAligned = paraAligned.has(l.index);
+            const prevRun = runs[runs.length - 1];
+            if (prevRun && prevRun.aligned === isAligned) {
+              prevRun.lines.push(l);
+            } else {
+              runs.push({ aligned: isAligned, lines: [l] });
             }
           }
-          const content = paragraph
-            .map((l, idx) => {
-              const rendered = inline(l.text, l.from, inlineOpts);
-              if (idx >= paragraph.length - 1) return rendered;
-              const nextLine = paragraph[idx + 1];
-              const joiner =
-                cjkMode && endsWithCjk(l.text) && startsWithCjk(nextLine.text) ? "" : " ";
-              return rendered + joiner;
-            })
-            .join("");
-          html += `<p>${content}</p>`;
+          for (const run of runs) {
+            if (run.aligned) {
+              const rowsHtml = run.lines
+                .map((l) => `<div class="org-aligned-row">${inline(l.text, l.from, inlineOpts)}</div>`)
+                .join("");
+              html += `<div class="org-aligned-block">${rowsHtml}</div>`;
+            } else {
+              html += renderProseParagraph(run.lines, inlineOpts, previewOpts, cjkMode);
+            }
+          }
         }
         break;
       }
@@ -735,7 +1114,7 @@ function renderSectionHtml(
 
   return `<section class="org-section org-level-${Math.min(
     node.level,
-    8
+    9
   )}" data-line="${node.headingLineIndex}" data-end-line="${
     node.endLineIndex
   }" data-slug="${escapeHtml(node.slug)}" data-title="${escapeHtml(
@@ -766,6 +1145,8 @@ const PRISM_ALIASES: Record<string, string> = {
   "c++": "cpp",
   "c#": "csharp",
   objc: "objectivec",
+  h: "c",
+  hpp: "cpp",
 };
 
 async function hydrateCodeBlocks(root: HTMLElement): Promise<void> {
@@ -778,11 +1159,12 @@ async function hydrateCodeBlocks(root: HTMLElement): Promise<void> {
       );
       const language = languageClass?.slice("language-".length);
       if (!language) return;
+      const normLang = language.trim().toLowerCase();
       const grammar =
-        Prism.languages[language] ?? Prism.languages[PRISM_ALIASES[language] ?? ""];
+        Prism.languages[normLang] ?? Prism.languages[PRISM_ALIASES[normLang] ?? ""];
       if (!grammar) return;
       const source = code.textContent ?? "";
-      replaceWithSanitizedHtml(code, Prism.highlight(source, grammar, language));
+      replaceWithSanitizedHtml(code, Prism.highlight(source, grammar, normLang));
       code.classList.add("is-loaded");
     });
   } catch (error) {
@@ -819,7 +1201,7 @@ export function renderOrgPreview(
   const root = createDetachedEl("div");
   root.className =
     "markdown-preview-view markdown-rendered node-insert-event is-readable-line-width " +
-    "allow-fold-headings allow-fold-lists show-indentation-guide show-properties org-preview";
+    "allow-fold-headings allow-fold-lists show-properties org-preview";
   root.dataset.readingWidth = options.settings.readingWidth ?? "normal";
   root.dataset.readingLineHeight = options.settings.readingLineHeight ?? "comfortable";
   root.dataset.cjkTypography = (options.settings.cjkTypography ?? true) ? "true" : "false";
@@ -896,6 +1278,21 @@ export function renderOrgPreview(
   }
 
   wireLinks(root, app, sourcePath, options.linkCallbacks);
+  root.querySelectorAll<HTMLElement>("sup.org-footnote[data-footnote]").forEach((sup) => {
+    sup.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const name = sup.dataset.footnote;
+      if (!name) return;
+      const target = Array.from(root.querySelectorAll<HTMLElement>(".org-footnote-def[data-footnote]")).find(
+        (el) => el.dataset.footnote === name
+      );
+      if (!target) return;
+      const foldedSection = target.closest<HTMLElement>(".org-section.is-folded, .org-section.is-body-folded");
+      if (foldedSection) unfoldReadingSection(foldedSection);
+      target.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    });
+  });
   if (options.settings.renderMath) hydrateMath(root);
   void hydrateCodeBlocks(root);
 

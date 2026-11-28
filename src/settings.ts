@@ -32,6 +32,8 @@ export interface OrgNativeSettings {
   readingFontScale: number;
   /** Optimize CJK + Latin mixed typography wrapping and spacing. */
   cjkTypography: boolean;
+  /** Join single newlines in prose (true) or preserve explicit line breaks as <br> (false). */
+  strictLineBreaks: boolean;
   /** Expand read-only #+transclude: directives in Reading View. */
   enableTransclusion: boolean;
   /** Maximum nested #+transclude: recursion depth (1 to 8). */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: OrgNativeSettings = {
   readingLineHeight: "comfortable",
   readingFontScale: 1.0,
   cjkTypography: true,
+  strictLineBreaks: false,
   enableTransclusion: true,
   transclusionMaxDepth: 4,
 };

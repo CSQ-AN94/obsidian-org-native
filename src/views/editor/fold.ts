@@ -78,14 +78,15 @@ function infoForBlock(
   doc: OrgDoc,
   block: OrgDoc["blocks"][number]
 ): OrgFoldInfo | null {
-  if (block.endLine == null) return null;
+  const effectiveEnd = block.endLine ?? block.contentEndLine;
+  if (effectiveEnd == null) return null;
   const begin = doc.lines[block.beginLine];
-  const end = doc.lines[block.endLine];
+  const end = doc.lines[effectiveEnd];
   if (!begin || !end) return null;
 
   const isSrc = block.type === "src";
   const indicatorLine = isSrc ? block.beginLine : block.beginLine + 1;
-  if (indicatorLine > block.endLine) return null;
+  if (indicatorLine > effectiveEnd) return null;
   const indicator = doc.lines[indicatorLine];
   if (!indicator) return null;
 
@@ -174,8 +175,9 @@ export function orgFoldForLine(state: EditorState, lineNumber: number): OrgFoldI
   }
 
   for (const block of doc.blocks) {
-    if (block.endLine == null) continue;
-    if (lineNumber < block.beginLine || lineNumber > block.endLine) continue;
+    const effectiveEnd = block.endLine ?? block.contentEndLine;
+    if (effectiveEnd == null) continue;
+    if (lineNumber < block.beginLine || lineNumber > effectiveEnd) continue;
     return infoForBlock(state, doc, block);
   }
 

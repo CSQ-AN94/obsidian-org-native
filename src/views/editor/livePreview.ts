@@ -18,6 +18,11 @@ import type {
 } from "../../core/model/types";
 import { parseInline } from "../../core/parser/inline";
 import { hydrateMath, renderInlineHtml } from "../../core/parser/inlineRender";
+import {
+  computeAlignedTextLineSet,
+  findVerticalArrowBlocks,
+  type VerticalArrowBlock,
+} from "../../core/parser/parse";
 import { OrgNativeSettings } from "../../settings";
 import { appendSanitizedHtml, createDetachedEl } from "../../util/dom";
 import {
@@ -44,6 +49,8 @@ export interface LivePreviewOptions {
 export const refreshOrgPreview = StateEffect.define<null>();
 
 const TRANSCLUDE_KEYWORD_RE = /^\s*#\+TRANSCLUDE(?:\[[^\]]*\])?:/i;
+const DOC_METADATA_KEYWORD_RE =
+  /^(?:TITLE|SUBTITLE|AUTHOR|EMAIL|DATE|DESCRIPTION|KEYWORDS|LANGUAGE|FILETAGS|TAGS|CATEGORY|STARTUP|OPTIONS|TODO|SEQ_TODO|TYP_TODO|SETUPFILE|INCLUDE|PROPERTY|EXPORT_[A-Z0-9_]+|ROAM_[A-Z0-9_]+)$/;
 const SAFE_UNIT_SCALE_MIN = 0.85;
 const SAFE_UNIT_SCALE_MAX = 1.25;
 
@@ -67,6 +74,41 @@ function parseFileTags(raw: string): string[] {
     if (p && !tags.includes(p)) tags.push(p);
   }
   return tags;
+}
+
+function parseListDescriptionOffsets(
+  content: string
+): { termEnd: number; sepStart: number; sepEnd: number } | null {
+  const tagShort = /^(\s*)(tag)(\s*::?\s*)(\[\[.+)$/i.exec(content);
+  if (tagShort) {
+    const termEnd = tagShort[1].length + tagShort[2].length;
+    const sepStart = termEnd;
+    const sepEnd = termEnd + tagShort[3].length;
+    return { termEnd, sepStart, sepEnd };
+  }
+
+  const protectedRanges: { from: number; to: number }[] = [];
+  const protectRe = /\[\[[^[\]\n]*(?:\]\[[^[\]\n]*)?\]\]|([=~])\S(?:[^\n]*?\S)?\1/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = protectRe.exec(content))) {
+    protectedRanges.push({ from: pm.index, to: pm.index + pm[0].length });
+  }
+
+  const sepRe = /(\s*)(::)(\s+|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = sepRe.exec(content))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (m[1].length === 0) continue;
+    if (protectedRanges.some((r) => start < r.to && end > r.from)) continue;
+    if (!content.slice(0, start).trim()) return null;
+    return {
+      termEnd: start,
+      sepStart: start + m[1].length,
+      sepEnd: start + m[1].length + 2,
+    };
+  }
+  return null;
 }
 
 let mathJaxPromise: Promise<void> | null = null;
@@ -437,6 +479,128 @@ class RuleWidget extends WidgetType {
   }
 }
 
+class EntityWidget extends WidgetType {
+  constructor(readonly symbol: string, readonly raw: string, readonly name = "") {
+    super();
+  }
+
+  eq(other: EntityWidget): boolean {
+    return other.symbol === this.symbol && other.raw === this.raw && other.name === this.name;
+  }
+
+  toDOM(): HTMLElement {
+    const span = createDetachedEl("span");
+    span.className = "org-entity";
+    if (this.name) span.dataset.entity = this.name;
+    span.textContent = this.symbol;
+    span.title = this.raw;
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+function buildFlowArrowSignature(
+  block: VerticalArrowBlock,
+  renderMathFlag: boolean,
+  resolveIdStatus?: (id: string) => OrgIdStatus
+): string {
+  const labelStr = block.labels
+    .map((label) => {
+      let extra = "";
+      if (resolveIdStatus && label.text.includes("id:")) {
+        const m = /\[\[id:([^\]\n]+?)(?:\]\[|\])/i.exec(label.text);
+        if (m) extra = `:${resolveIdStatus(m[1].trim())}`;
+      }
+      return `${label.text}${extra}`;
+    })
+    .join("\u0001");
+  return `${renderMathFlag ? "1" : "0"}\u0002${labelStr}`;
+}
+
+class FlowArrowWidget extends WidgetType {
+  readonly signature: string;
+
+  constructor(
+    readonly block: VerticalArrowBlock,
+    readonly app: App,
+    readonly sourcePath: string,
+    readonly renderMath: boolean,
+    readonly linkCallbacks?: LinkCallbacks,
+    readonly resolveIdStatus?: (id: string) => OrgIdStatus
+  ) {
+    super();
+    this.signature = buildFlowArrowSignature(block, renderMath, resolveIdStatus);
+  }
+
+  eq(other: FlowArrowWidget): boolean {
+    return other.signature === this.signature;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const outer = createDetachedEl("div");
+    outer.className = "org-flow-arrow-widget";
+    outer.setAttribute("contenteditable", "false");
+    outer.title = "Click to edit vertical flow arrow";
+
+    const wrapper = createDetachedEl("div");
+    wrapper.className = "org-flow-arrow";
+    wrapper.setAttribute("role", "figure");
+    wrapper.setAttribute("aria-label", "Flow arrow");
+
+    const rail = createDetachedEl("span");
+    rail.className = "org-flow-arrow-rail";
+    rail.setAttribute("aria-hidden", "true");
+    const stem = createDetachedEl("span");
+    stem.className = "org-flow-arrow-stem";
+    const head = createDetachedEl("span");
+    head.className = "org-flow-arrow-head";
+    rail.appendChild(stem);
+    rail.appendChild(head);
+    wrapper.appendChild(rail);
+
+    if (this.block.labels.length > 0) {
+      const body = createDetachedEl("div");
+      body.className = "org-flow-arrow-body";
+      for (const label of this.block.labels) {
+        const labelEl = createDetachedEl("div");
+        labelEl.className = "org-flow-arrow-label";
+        appendSanitizedHtml(
+          labelEl,
+          renderInlineHtml(label.text, label.from, {
+            app: this.app,
+            sourcePath: this.sourcePath,
+            math: this.renderMath,
+            resolveIdStatus: this.resolveIdStatus,
+          })
+        );
+        body.appendChild(labelEl);
+      }
+      wrapper.appendChild(body);
+      wireLinks(wrapper, this.app, this.sourcePath, this.linkCallbacks);
+      if (this.renderMath) hydrateMath(wrapper);
+    }
+
+    outer.appendChild(wrapper);
+    outer.addEventListener("click", (event) => {
+      const targetEl = event.target as HTMLElement | null;
+      if (targetEl?.closest("a[data-href]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const pos = safePosAtDOM(view, outer, this.block.from);
+      view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+      view.focus();
+    });
+    return outer;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 class CodeFlairWidget extends WidgetType {
   constructor(
     readonly lang: string | undefined,
@@ -510,11 +674,15 @@ class CodeFlairWidget extends WidgetType {
       const lineIdx = view.state.doc.lineAt(pos).number - 1;
       const doc = orgDocForText(view.state.doc);
       const block = doc.blocks.find((b) => b.beginLine === lineIdx);
-      const endLine = block?.endLine ?? doc.lines.length - 1;
+      const endLine = block
+        ? block.endLine !== undefined
+          ? block.endLine
+          : (block.contentEndLine ?? doc.lines.length - 1) + 1
+        : doc.lines.length - 1;
       const code = block
         ? doc.lines
             .slice(block.beginLine + 1, endLine)
-            .map((l) => l.text)
+            .map((l) => l.text.replace(/^(\s*),(\*+|#\+)/, "$1$2"))
             .join("\n")
         : "";
       const copyPromise = navigator.clipboard?.writeText?.(code);
@@ -777,7 +945,13 @@ class MetadataWidget extends WidgetType {
     readonly raw: string,
     readonly fallbackLineFrom: number,
     readonly displayMode: PropertiesDisplayMode,
-    readonly app: App
+    readonly app: App,
+    readonly propDrawer?: {
+      name: string;
+      entries: { key: string; value: string }[];
+      raw: string;
+      fallbackFrom: number;
+    }
   ) {
     super();
   }
@@ -787,7 +961,8 @@ class MetadataWidget extends WidgetType {
       other.raw === this.raw &&
       other.title === this.title &&
       other.displayMode === this.displayMode &&
-      other.fileTags.join("\u0000") === this.fileTags.join("\u0000")
+      other.fileTags.join("\u0000") === this.fileTags.join("\u0000") &&
+      (other.propDrawer?.raw ?? "") === (this.propDrawer?.raw ?? "")
     );
   }
 
@@ -818,6 +993,17 @@ class MetadataWidget extends WidgetType {
         tagRow.appendChild(chip);
       }
       outer.appendChild(tagRow);
+    }
+
+    if (this.propDrawer) {
+      const propEl = new PropertiesWidget(
+        this.propDrawer.name,
+        this.propDrawer.entries,
+        this.propDrawer.raw,
+        this.propDrawer.fallbackFrom,
+        this.displayMode
+      ).toDOM(view);
+      outer.appendChild(propEl);
     }
 
     if (this.entries.length > 0 && this.displayMode !== "hidden") {
@@ -926,9 +1112,13 @@ function getCodeMarks(doc: OrgDoc): Map<number, { from: number; to: number; cls:
 
   const codeMarks = new Map<number, { from: number; to: number; cls: string }[]>();
   for (const block of doc.blocks) {
-    if (block.type !== "src" || block.endLine == null) continue;
+    if (block.type !== "src") continue;
+    const last =
+      block.endLine !== undefined
+        ? block.endLine - 1
+        : block.contentEndLine;
+    if (last == null) continue;
     const first = block.beginLine + 1;
-    const last = block.endLine - 1;
     if (first > last) continue;
     const firstLine = doc.lines[first];
     const lastLine = doc.lines[last];
@@ -1241,22 +1431,99 @@ function decorateInlineTokens(
           ranges.push(Decoration.mark({ class: "org-math-source" }).range(token.from, token.to));
         }
         break;
+      case "entity": {
+        const raw = state.sliceDoc(token.from, token.to);
+        if (touched) {
+          ranges.push(
+            Decoration.mark({ class: "cm-formatting org-formatting-delim" }).range(
+              token.from,
+              token.to
+            )
+          );
+        } else {
+          ranges.push(
+            Decoration.replace({ widget: new EntityWidget(token.symbol, raw, token.name) }).range(
+              token.from,
+              token.to
+            )
+          );
+        }
+        break;
+      }
+      case "linebreak":
+        if (touched) {
+          ranges.push(
+            Decoration.mark({ class: "cm-formatting org-formatting-delim" }).range(
+              token.from,
+              token.to
+            )
+          );
+        } else {
+          ranges.push(
+            Decoration.mark({ class: "org-formatting-delim org-linebreak-delim" }).range(
+              token.from,
+              token.to
+            )
+          );
+        }
+        break;
     }
   }
 }
 
-function findInitialMetadataRange(doc: OrgDoc): { start: number; end: number } | null {
-  let start = 0;
-  while (start < doc.lines.length && doc.lines[start].kind === "blank") start++;
-  let end = start;
+interface InitialMetadataRange {
+  /** First line index covered by combined preamble (drawer + keywords) when drawer precedes keywords, else keyword start. */
+  blockStart: number;
+  /** Keyword range start/end (inclusive start, exclusive end). */
+  kwStart: number;
+  kwEnd: number;
+  /** Optional leading top-level PROPERTIES drawer right before keywords. */
+  leadingDrawerIndex?: number;
+}
+
+function findInitialMetadataRange(doc: OrgDoc): InitialMetadataRange | null {
+  let cursor = 0;
   while (
-    end < doc.lines.length &&
-    doc.lines[end].kind === "keyword" &&
-    !isTranscludeKeywordLine(doc.lines[end].text)
+    cursor < doc.lines.length &&
+    (doc.lines[cursor].kind === "blank" || doc.lines[cursor].kind === "comment")
   ) {
-    end++;
+    cursor++;
   }
-  return end > start ? { start, end } : null;
+
+  let leadingDrawerIndex: number | undefined;
+  let blockStart = cursor;
+  const firstLine = doc.lines[cursor];
+  if (
+    firstLine &&
+    firstLine.kind === "drawer-start" &&
+    firstLine.drawer?.name.toUpperCase() === "PROPERTIES" &&
+    firstLine.drawer.endLine !== undefined
+  ) {
+    leadingDrawerIndex = firstLine.drawer.id;
+    cursor = firstLine.drawer.endLine + 1;
+    while (
+      cursor < doc.lines.length &&
+      (doc.lines[cursor].kind === "blank" || doc.lines[cursor].kind === "comment")
+    ) {
+      cursor++;
+    }
+  }
+
+  const kwStart = cursor;
+  let kwEnd = kwStart;
+  while (
+    kwEnd < doc.lines.length &&
+    doc.lines[kwEnd].kind === "keyword" &&
+    !isTranscludeKeywordLine(doc.lines[kwEnd].text)
+  ) {
+    const km = /^\s*#\+([A-Za-z0-9_-]+)(?:\[[^\]]*\])?:\s*(.*)$/.exec(doc.lines[kwEnd].text);
+    const upper = km?.[1].toUpperCase() ?? "";
+    if (!upper || !DOC_METADATA_KEYWORD_RE.test(upper)) break;
+    kwEnd++;
+  }
+  if (kwEnd <= kwStart) return null;
+  if (leadingDrawerIndex === undefined) blockStart = kwStart;
+  return { blockStart, kwStart, kwEnd, leadingDrawerIndex };
 }
 
 function decoratePlanningKeywords(
@@ -1321,7 +1588,11 @@ function computeActiveSignature(
   const metaRange = findInitialMetadataRange(doc);
   const metaTouched =
     metaRange !== null &&
-    selectionTouches(selection, doc.lines[metaRange.start].from, doc.lines[metaRange.end - 1].to);
+    selectionTouches(
+      selection,
+      doc.lines[metaRange.blockStart].from,
+      doc.lines[metaRange.kwEnd - 1].to
+    );
 
   const touchedMath: number[] = [];
   if (options.settings.renderMath) {
@@ -1344,6 +1615,13 @@ function computeActiveSignature(
     const last = doc.lines[drawer.endLine];
     if (first && last && selectionTouches(selection, first.from, last.to)) {
       touchedDrawers.push(drawer.id);
+    }
+  }
+
+  const touchedFlowArrows: number[] = [];
+  for (const flow of findVerticalArrowBlocks(doc)) {
+    if (selectionTouches(selection, flow.from, flow.to)) {
+      touchedFlowArrows.push(flow.startLine);
     }
   }
 
@@ -1372,6 +1650,19 @@ function computeActiveSignature(
       const contentSlice = line.text.slice(line.list.contentFrom - line.from);
       const tok = contentSlice ? activeTokensKey(contentSlice, line.list.contentFrom, selection) : "";
       if (tok) detail += `(${tok})`;
+      if (!line.list.ordered && !line.list.checkbox && contentSlice) {
+        const desc = parseListDescriptionOffsets(contentSlice);
+        if (
+          desc &&
+          selectionTouches(
+            selection,
+            line.list.contentFrom + desc.sepStart,
+            line.list.contentFrom + desc.sepEnd
+          )
+        ) {
+          detail += `D(${desc.sepStart}-${desc.sepEnd})`;
+        }
+      }
     } else if (
       line.kind === "text" ||
       line.kind === "quote" ||
@@ -1393,6 +1684,7 @@ function computeActiveSignature(
     touchedMath.join(","),
     touchedTables.join(","),
     touchedDrawers.join(","),
+    touchedFlowArrows.join(","),
   ].join("|");
 }
 
@@ -1418,13 +1710,13 @@ function buildDecorations(
 
   const metaRange = findInitialMetadataRange(doc);
   if (metaRange && settings.propertiesDisplay !== "hidden") {
-    const first = doc.lines[metaRange.start];
-    const last = doc.lines[metaRange.end - 1];
+    const first = doc.lines[metaRange.blockStart];
+    const last = doc.lines[metaRange.kwEnd - 1];
     if (!selectionTouches(selection, first.from, last.to)) {
       const entries: { key: string; value: string }[] = [];
       const rawLines: string[] = [];
       const fileTags: string[] = [];
-      for (let i = metaRange.start; i < metaRange.end; i++) {
+      for (let i = metaRange.kwStart; i < metaRange.kwEnd; i++) {
         const text = doc.lines[i].text;
         rawLines.push(text);
         const match = /^\s*#\+([A-Za-z0-9_-]+)(?:\[[^\]]*\])?:\s*(.*)$/.exec(text);
@@ -1434,13 +1726,24 @@ function buildDecorations(
             for (const tag of parseFileTags(match[2])) {
               if (!fileTags.includes(tag)) fileTags.push(tag);
             }
-          }
-          if (upper !== "TITLE") {
+          } else if (upper !== "TITLE") {
             entries.push({ key: upper, value: match[2] });
           }
         }
       }
-      if (title || entries.length > 0 || fileTags.length > 0) {
+      const leadingDrawer =
+        metaRange.leadingDrawerIndex !== undefined
+          ? doc.drawers[metaRange.leadingDrawerIndex]
+          : undefined;
+      const propDrawer = leadingDrawer
+        ? {
+            name: leadingDrawer.name,
+            entries: leadingDrawer.entries.map((e) => ({ key: e.key, value: e.value })),
+            raw: leadingDrawer.rawLines.join("\n"),
+            fallbackFrom: doc.lines[leadingDrawer.startLine]?.from ?? first.from,
+          }
+        : undefined;
+      if (title || entries.length > 0 || fileTags.length > 0 || propDrawer) {
         ranges.push(
           Decoration.replace({
             widget: new MetadataWidget(
@@ -1450,21 +1753,26 @@ function buildDecorations(
               rawLines.join("\n"),
               first.from,
               settings.propertiesDisplay,
-              options.app
+              options.app,
+              propDrawer
             ),
             block: true,
           }).range(first.from, last.to)
         );
-        for (let i = metaRange.start; i < metaRange.end; i++) skipped.add(i);
+        for (let i = metaRange.blockStart; i < metaRange.kwEnd; i++) skipped.add(i);
         titleInMetadataCard = true;
       }
     }
   }
 
+  const flowBlocks = findVerticalArrowBlocks(doc);
+  const alignedLines = computeAlignedTextLineSet(doc.lines);
+
   const startsWithBlockWidget =
     doc.mathBlocks.some((block) => block.startLine === 0) ||
     doc.tables.some((table) => table.startLine === 0) ||
-    doc.drawers.some((drawer) => drawer.startLine === 0);
+    doc.drawers.some((drawer) => drawer.startLine === 0) ||
+    flowBlocks.some((flow) => flow.startLine === 0);
 
   if (title && !titleInMetadataCard && !startsWithBlockWidget) {
     ranges.push(
@@ -1542,6 +1850,7 @@ function buildDecorations(
 
   for (const drawer of doc.drawers) {
     if (drawer.endLine == null) continue;
+    if (skipped.has(drawer.startLine)) continue;
     const first = doc.lines[drawer.startLine];
     const last = doc.lines[drawer.endLine];
     if (!first || !last) continue;
@@ -1563,6 +1872,28 @@ function buildDecorations(
     for (let i = drawer.startLine; i <= drawer.endLine; i++) skipped.add(i);
   }
 
+  for (const flow of flowBlocks) {
+    if (skipped.has(flow.startLine)) continue;
+    const first = doc.lines[flow.startLine];
+    const last = doc.lines[flow.endLine];
+    if (!first || !last) continue;
+    if (selectionTouches(selection, first.from, last.to)) continue;
+    ranges.push(
+      Decoration.replace({
+        widget: new FlowArrowWidget(
+          flow,
+          options.app,
+          options.sourcePath,
+          settings.renderMath,
+          options.linkCallbacks,
+          options.resolveIdStatus
+        ),
+        block: true,
+      }).range(first.from, last.to)
+    );
+    for (let i = flow.startLine; i <= flow.endLine; i++) skipped.add(i);
+  }
+
   for (const line of doc.lines) {
     if (skipped.has(line.index)) continue;
     const active = activeLines.has(line.index);
@@ -1571,7 +1902,7 @@ function buildDecorations(
       case "heading": {
         const heading = line.heading;
         if (!heading) break;
-        const orgLevel = Math.min(heading.level, 8);
+        const orgLevel = Math.min(heading.level, 9);
         const mdLevel = Math.min(heading.level, 6);
         ranges.push(
           Decoration.line({
@@ -1677,6 +2008,9 @@ function buildDecorations(
           if (list.checkbox.checked) classes.push("org-task-done");
           else if (partial) classes.push("org-task-partial");
         }
+        if (alignedLines.has(line.index)) {
+          classes.push("org-aligned-line");
+        }
         ranges.push(Decoration.line({ class: classes.join(" ") }).range(line.from));
 
         const markerActive = selectionTouchesListMarker(
@@ -1714,6 +2048,33 @@ function buildDecorations(
           ranges.push(Decoration.mark({ class: contentCls }).range(list.contentFrom, line.to));
           const contentText = line.text.slice(list.contentFrom - line.from);
           if (contentText) {
+            const desc =
+              !list.ordered && !list.checkbox ? parseListDescriptionOffsets(contentText) : null;
+            if (desc && desc.termEnd > 0) {
+              ranges.push(
+                Decoration.mark({ class: "org-desc-term" }).range(
+                  list.contentFrom,
+                  list.contentFrom + desc.termEnd
+                )
+              );
+              const sepFrom = list.contentFrom + desc.sepStart;
+              const sepTo = list.contentFrom + desc.sepEnd;
+              const sepTouched = selectionTouches(selection, sepFrom, sepTo);
+              if (sepTo > sepFrom) {
+                if (sepTouched) {
+                  ranges.push(
+                    Decoration.mark({ class: "cm-formatting org-formatting-delim org-desc-sep" }).range(
+                      sepFrom,
+                      sepTo
+                    )
+                  );
+                } else {
+                  ranges.push(
+                    Decoration.mark({ class: "org-desc-sep" }).range(sepFrom, sepTo)
+                  );
+                }
+              }
+            }
             decorateInlineTokens(
               state,
               parseInline(contentText, list.contentFrom, { tags: false }),
@@ -1804,29 +2165,43 @@ function buildDecorations(
         break;
       }
 
-      case "src":
+      case "src": {
         ranges.push(
           Decoration.line({
             class: "org-line org-src-body HyperMD-codeblock HyperMD-codeblock-bg",
           }).range(line.from)
         );
         if (line.text) {
-          ranges.push(
-            Decoration.mark({
-              class: "cm-hmd-codeblock",
-              attributes: { spellcheck: "false" },
-            }).range(line.from, line.to)
-          );
+          let markMinFrom = line.from;
+          if (!active) {
+            const commaEscape = /^(\s*),(\*+|#\+)/.exec(line.text);
+            if (commaEscape) {
+              const commaAt = line.from + commaEscape[1].length;
+              ranges.push(EMPTY_REPLACE.range(commaAt, commaAt + 1));
+              markMinFrom = commaAt + 1;
+            }
+          }
+          if (line.to > markMinFrom) {
+            ranges.push(
+              Decoration.mark({
+                class: "cm-hmd-codeblock",
+                attributes: { spellcheck: "false" },
+              }).range(markMinFrom, line.to)
+            );
+          }
           for (const mark of codeMarks.get(line.index) ?? []) {
+            const mFrom = Math.max(mark.from, markMinFrom);
+            if (mark.to <= mFrom) continue;
             ranges.push(
               Decoration.mark({
                 class: `cm-hmd-codeblock ${mark.cls}`,
                 attributes: { spellcheck: "false" },
-              }).range(mark.from, mark.to)
+              }).range(mFrom, mark.to)
             );
           }
         }
         break;
+      }
 
       case "quote":
         ranges.push(
@@ -1857,12 +2232,23 @@ function buildDecorations(
           }).range(line.from)
         );
         if (line.text) {
-          ranges.push(
-            Decoration.mark({
-              class: "cm-hmd-codeblock",
-              attributes: { spellcheck: "false" },
-            }).range(line.from, line.to)
-          );
+          let markMinFrom = line.from;
+          if (!active && line.kind === "example") {
+            const commaEscape = /^(\s*),(\*+|#\+)/.exec(line.text);
+            if (commaEscape) {
+              const commaAt = line.from + commaEscape[1].length;
+              ranges.push(EMPTY_REPLACE.range(commaAt, commaAt + 1));
+              markMinFrom = commaAt + 1;
+            }
+          }
+          if (line.to > markMinFrom) {
+            ranges.push(
+              Decoration.mark({
+                class: "cm-hmd-codeblock",
+                attributes: { spellcheck: "false" },
+              }).range(markMinFrom, line.to)
+            );
+          }
         }
         break;
 
@@ -1949,6 +2335,16 @@ function buildDecorations(
 
       case "fixed-width":
         ranges.push(Decoration.line({ class: "org-line org-fixed-width" }).range(line.from));
+        if (!active) {
+          const fw = /^(\s*)(: ?)/.exec(line.text);
+          if (fw) {
+            const colonFrom = line.from + fw[1].length;
+            const colonTo = colonFrom + fw[2].length;
+            if (colonTo > colonFrom) {
+              ranges.push(EMPTY_REPLACE.range(colonFrom, colonTo));
+            }
+          }
+        }
         break;
 
       case "rule":
@@ -1966,6 +2362,9 @@ function buildDecorations(
         break;
 
       case "text":
+        if (alignedLines.has(line.index)) {
+          ranges.push(Decoration.line({ class: "org-line org-aligned-line" }).range(line.from));
+        }
         if (!line.text) break;
         decorateInlineTokens(
           state,

@@ -77,6 +77,8 @@ export interface BlockData {
   rawName: string;
   beginLine: number;
   endLine?: number;
+  /** Inclusive last line index of block body content (used when endLine is omitted or auto-closed). */
+  contentEndLine?: number;
   lang?: string;
   beginFrom: number;
   beginTo: number;
@@ -200,6 +202,18 @@ export type InlineToken =
       to: number;
       latex: string;
       display: boolean;
+    }
+  | {
+      type: "entity";
+      from: number;
+      to: number;
+      name: string;
+      symbol: string;
+    }
+  | {
+      type: "linebreak";
+      from: number;
+      to: number;
     };
 
 export interface OrgSectionNode {

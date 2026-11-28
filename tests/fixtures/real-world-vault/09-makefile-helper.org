@@ -1,0 +1,16 @@
+:PROPERTIES:
+:ID:       90000000-0000-4000-8000-000000000010
+:END:
+#+title: Makefile & C Build Automation
+#+filetags: :C:Build:
+
+* Makefile 自动化核心规则
+#+begin_src makefile
+CC = gcc
+CFLAGS = -Wall -Werror -g2
+
+hello: main.o utils.o
+	$(CC) $(CFLAGS) main.o utils.o -o hello
+#+end_src
+
+只有目标文件比依赖更旧时才重新编译。

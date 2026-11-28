@@ -48,6 +48,8 @@ const ALIASES: Record<string, string> = {
   "c++": "cpp",
   "c#": "csharp",
   objc: "objectivec",
+  h: "c",
+  hpp: "cpp",
 };
 
 const TOKEN_MAP: [string, string][] = [
@@ -90,16 +92,17 @@ const highlightCache = new Map<string, CodeRange[]>();
 
 export function highlightCode(content: string, lang: string | undefined): CodeRange[] {
   if (!prism || !lang || !content) return [];
-  const cacheKey = `${lang}\u0000${content}`;
+  const normLang = lang.trim().toLowerCase();
+  const cacheKey = `${normLang}\u0000${content}`;
   const cached = highlightCache.get(cacheKey);
   if (cached) return cached;
 
-  const grammar = prism.languages[lang] ?? prism.languages[ALIASES[lang] ?? ""];
+  const grammar = prism.languages[normLang] ?? prism.languages[ALIASES[normLang] ?? ""];
   if (!grammar) return [];
 
   let html: string;
   try {
-    html = prism.highlight(content, grammar, lang);
+    html = prism.highlight(content, grammar, normLang);
   } catch {
     return [];
   }

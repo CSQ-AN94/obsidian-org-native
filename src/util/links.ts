@@ -105,6 +105,30 @@ export function wireLinks(
   });
 }
 
+function resolveVaultRelativePath(rawPath: string, sourcePath: string): string | null {
+  const normalized = rawPath.replace(/\\/g, "/");
+  if (normalized.startsWith("/")) {
+    const stripped = normalized.replace(/^\/+/, "");
+    return stripped || null;
+  }
+
+  const baseDir = sourcePath.includes("/") ? sourcePath.slice(0, sourcePath.lastIndexOf("/")) : "";
+  const baseParts = baseDir ? baseDir.split("/").filter(Boolean) : [];
+  const relParts = normalized.split("/");
+  const stack = [...baseParts];
+
+  for (const part of relParts) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+    } else {
+      stack.push(part);
+    }
+  }
+  return stack.length > 0 ? stack.join("/") : null;
+}
+
 export function resolveResourcePath(app: App, target: string, sourcePath: string): string | null {
   if (isUnsafeUriScheme(target)) return null;
   let path = stripFilePrefix(target);
@@ -116,12 +140,26 @@ export function resolveResourcePath(app: App, target: string, sourcePath: string
     return `file:///${path.replace(/\\/g, "/").replace(/ /g, "%20")}`;
   }
 
-  const abstract = app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+  const vaultRel = resolveVaultRelativePath(path, sourcePath);
+  if (vaultRel === null) return null;
+  const getByPath = (app.vault as { getAbstractFileByPath?: (p: string) => unknown })
+    ?.getAbstractFileByPath;
+  const direct = typeof getByPath === "function" ? getByPath.call(app.vault, vaultRel) : null;
+  if (direct instanceof TFile) {
+    return app.vault.adapter.getResourcePath(direct.path);
+  }
+
+  const cleanLink = path.replace(/^(?:\.\/)+/, "");
+  const abstract =
+    app.metadataCache.getFirstLinkpathDest(cleanLink, sourcePath) ??
+    (cleanLink !== path ? app.metadataCache.getFirstLinkpathDest(path, sourcePath) : null);
   if (abstract instanceof TFile) {
     return app.vault.adapter.getResourcePath(abstract.path);
   }
   try {
-    return app.vault.adapter.getResourcePath(path);
+    const fallbackPath =
+      sourcePath.includes("/") || /^\.\.?[\\/]/.test(path) ? vaultRel : cleanLink || path;
+    return app.vault.adapter.getResourcePath(fallbackPath);
   } catch {
     return null;
   }

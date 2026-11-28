@@ -154,9 +154,15 @@ describe("Reading View UX, typography, and contracts", () => {
     ].join("\n");
 
     const root = renderOrgPreview(src, app, "notes/mix.org", {
-      settings: { ...DEFAULT_SETTINGS, cjkTypography: true },
+      settings: { ...DEFAULT_SETTINGS, cjkTypography: true, strictLineBreaks: true },
       onToggleTask: () => {},
     });
+
+    // Also verify default strictLineBreaks: false preserves explicit line breaks as <br>
+    const defaultBreaksRoot = renderOrgPreview(src, app, "notes/mix.org", {
+      settings: { ...DEFAULT_SETTINGS, cjkTypography: true },
+    });
+    expect(defaultBreaksRoot.querySelector("p br")).toBeTruthy();
 
     // No empty metadata drawer when only TITLE + FILETAGS exist -> entries has FILETAGS (1), wait:
     // Verify filetags chips exist cleanly.

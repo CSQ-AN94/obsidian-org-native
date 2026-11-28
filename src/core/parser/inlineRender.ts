@@ -141,6 +141,14 @@ export function renderInlineHtml(
         }
         break;
       }
+      case "entity":
+        out += `<span class="org-entity" data-entity="${escapeHtml(token.name)}">${escapeHtml(
+          token.symbol
+        )}</span>`;
+        break;
+      case "linebreak":
+        out += `<br class="org-linebreak">`;
+        break;
     }
     cursor = token.to;
   }
